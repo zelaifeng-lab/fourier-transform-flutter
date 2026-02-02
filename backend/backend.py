@@ -595,13 +595,20 @@ def _rule_rational_apart_linearity(f):
     NOTE: This function is "steps-only refactor": computation is unchanged, only steps are
     written in a textbook style (no internal rule logs).
     """
-    # Fast guard: if f is already a simple term that other rules can handle,
-    # do NOT run together/div/apart again (avoids deep recursion + repeated heavy algebra).
+    # Fast guard:
+    # If f is already a simple term that other rules can handle (e.g. 1/(t+a), 1/(t+a)^2,
+    # or (at+b)/(t^2+c)), do NOT run together/div/apart again.
+    # HOWEVER: for products of distinct linear factors like 1/((t+a)(t+b)), we MUST allow apart.
     try:
         num0, den0 = fraction(together(f))
         Pn0, Pd0 = Poly(num0, t), Poly(den0, t)
+
         if Pd0.degree() <= 2 and Pn0.degree() <= 1:
-            return None
+            # If denominator factors into two distinct linear factors in t, do not skip apart.
+            facs = Pd0.factor_list()[1]  # [(factor_poly, exp), ...]
+            degs = [fp.degree() for (fp, _e) in facs]
+            if not (len(facs) == 2 and degs == [1, 1]):
+                return None
     except Exception:
         pass
 
@@ -631,15 +638,60 @@ def _rule_rational_apart_linearity(f):
             return None
 
         # transform each additive term (computation unchanged)
+
         terms = pf.as_ordered_terms() if pf.is_Add else [pf]
+
         X_terms = []
-        term_lines = []
-        for term in terms:
-            form, ok, Xk, _steps_k, _cond_k, _err_k = _derive_with_properties(term)
-            if not ok:
-                return None
+
+
+        # Build term-wise derivations for display (textbook style)
+
+        termwise_steps = []
+
+        for k, term in enumerate(terms, start=1):
+
+            # Compute transform of this term using the same engine (does not change math rules)
+
+            form_k, ok_k, Xk, steps_k, cond_k, err_k = _derive_with_properties(term)
+
+
             X_terms.append(Xk)
-            term_lines.append(r"\mathcal{F}\{" + latex(term) + r"\}=" + latex(Xk))
+
+
+            termwise_steps.append(r"\textbf{Term %d}:\quad x_{%d}(t)=%s" % (k, k, latex(term)))
+
+
+            # Include the term's own derivation steps, but avoid repeating global headers/markers.
+
+            for s in (steps_k or []):
+
+                if not s:
+
+                    continue
+
+                ss = str(s).strip()
+
+                if not ss:
+
+                    continue
+
+                if ("=\\mathcal" in ss and "X(" in ss):
+
+                    continue
+
+                if ss.startswith("Method:"):
+
+                    continue
+
+                if "Final Result" in ss:
+
+                    continue
+
+                termwise_steps.append(ss)
+
+
+            termwise_steps.append(r"\Rightarrow\; X_{%d}(ω)=%s" % (k, latex(Xk)))
+
 
         X = _omega_real_cleanup(Add(*X_terms, evaluate=False))
 
@@ -653,7 +705,7 @@ def _rule_rational_apart_linearity(f):
             steps.append(div_line)
         steps.append(latex(f_rem) + "=" + latex(pf))
         steps.append(r"\textbf{Step 3: Use known Fourier transform pairs}")
-        steps.extend(term_lines)
+        steps.extend(termwise_steps)
         steps.append(r"\textbf{Step 4: Combine by linearity}")
         steps.append(r"X(\omega)=\sum_k \mathcal{F}\{t_k\}")
         steps.append(r"\textbf{Final Result}")
@@ -663,20 +715,30 @@ def _rule_rational_apart_linearity(f):
     except Exception:
         return None
 def _match_shifted_power(f, n):
-    # Match 1/(t+a)^n where n=1 or 2; return a if matched
+    # Match 1/(t+a)^n where n=1 or 2; return a if matched.
+    # IMPORTANT: Do NOT match products like 1/((t+a)(t+b)) as 1/(t+a).
     if f.is_Pow and f.exp == -n:
         base = f.base
         lin = _as_linear_in_t(base)
         if lin and lin[0] == 1:
             return simplify(lin[1])
+
     if isinstance(f, Mul):
-        for arg in f.args:
+        args = list(f.args)
+        for i, arg in enumerate(args):
             if arg.is_Pow and arg.exp == -n:
+                # Only allow (const) * 1/(t+a)^n. If remaining factors still depend on t,
+                # it's not a pure shifted-power term.
+                rest = Mul(*[a for j, a in enumerate(args) if j != i])
+                if rest.has(t):
+                    continue
                 base = arg.base
                 lin = _as_linear_in_t(base)
                 if lin and lin[0] == 1:
                     return simplify(lin[1])
     return None
+
+
 
 
 # ---------- main derivation ----------
@@ -911,21 +973,40 @@ def _derive_with_properties(f):
         ]
         return "distribution_form", True, X, steps, "", None
 
+
     # 2) PV rational distributions: 1/(t+a), 1/(t+a)^2
-    a1 = _match_shifted_power(f, 1)
+    # Allow an overall constant factor c: F{c*g(t)} = c*G(ω)
+    c0 = 1
+    f0 = f
+    if isinstance(f, Mul):
+        const_args = []
+        t_args = []
+        for _a in f.args:
+            if _a.has(t):
+                t_args.append(_a)
+            else:
+                const_args.append(_a)
+        if const_args:
+            c0 = Mul(*const_args)
+            f0 = Mul(*t_args) if t_args else 1
+    a1 = _match_shifted_power(f0, 1)
     if a1 is not None:
-        X = simplify(-I*pi*sign(omega) * exp(I*omega*a1))
+        X = simplify(c0 * (-I*pi*sign(omega) * exp(I*omega*a1)))
         steps = [
-            r"\text{(Distribution)}\;\mathcal{F}\{\mathrm{PV}\tfrac{1}{t}\}=-j\pi\,\mathrm{sign}(\omega)",
-            r"\text{Time shift: }\mathcal{F}\{g(t-t_0)\}=e^{-j\omega t_0}G(\omega)",
-            r"\Rightarrow\;X(\omega)=e^{j\omega a}\left(-j\pi\,\mathrm{sign}(\omega)\right)",
+            r"\text{(Distribution)}\;\mathcal{F}\{\mathrm{PV}\tfrac{1}{t}\}=-i\pi\,\mathrm{sign}(\omega)",
+            r"\text{Time shift: }\mathcal{F}\{g(t-t_0)\}=e^{-i\omega t_0}G(\omega)",
+        ]
+        if c0 != 1:
+            steps.append(r"\text{Linearity: }\mathcal{F}\{c\,g(t)\}=c\,G(\omega),\; c=" + latex(c0))
+        steps += [
+            r"\Rightarrow\;X(\omega)=c\,e^{i\omega a}\left(-i\pi\,\mathrm{sign}(\omega)\right)",
             r"X(\omega)=" + latex(X),
             ]
         return "distribution_form", True, X, steps, "", None
 
-    a2 = _match_shifted_power(f, 2)
+    a2 = _match_shifted_power(f0, 2)
     if a2 is not None:
-        X = simplify(-pi*omega*sign(omega) * exp(I*omega*a2))
+        X = simplify(c0 * (-pi*omega*sign(omega) * exp(I*omega*a2)))
         steps = [
             r"\frac{d}{dt}\left(\frac{1}{t+a}\right)=-\frac{1}{(t+a)^2}",
             r"\mathcal{F}\left\{\frac{d}{dt}g(t)\right\}=j\omega\,G(\omega)",
