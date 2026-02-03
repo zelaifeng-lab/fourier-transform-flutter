@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -56,11 +57,20 @@ class SymbolicResult {
   }
 }
 Future<SymbolicResult> computeByBackendOnly(String expression) async {
-  // Android Emulator -> host machine
-  const baseUrl = 'http://10.0.2.2:8000/fourier';
+// Backend selection:
+// - Web (GitHub Pages/Flutter Web): use your public Render URL (HTTPS)
+// - Android emulator: use 10.0.2.2 to reach host machine
+// - You can override for any build with:
+//   flutter run/build ... --dart-define=API_BASE_URL=https://your-backend
+  const String envBase = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  const String renderBase = 'https://fourier-transform-flutter.onrender.com';
+  const String androidEmulatorBase = 'http://10.0.2.2:8000';
+
+  final String base = envBase.isNotEmpty ? envBase : (kIsWeb ? renderBase : androidEmulatorBase);
+  final Uri uri = Uri.parse(base.endsWith('/') ? '${base}fourier' : '${base}/fourier');
+
 
   try {
-    final uri = Uri.parse(baseUrl);
     final res = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
