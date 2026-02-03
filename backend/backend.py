@@ -34,6 +34,19 @@ from sympy.parsing.sympy_parser import (
 
 app = FastAPI(title="Fourier Backend (Engineering Convention, ω real)")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://zelaifeng-lab.github.io",   # 你的 GitHub Pages 域名
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],   # 允许 POST/OPTIONS 等
+    allow_headers=["*"],   # 允许 Content-Type 等
+)
+
+
 # ---------- middleware: per-request performance summary ----------
 from starlette.requests import Request
 from starlette.responses import Response
