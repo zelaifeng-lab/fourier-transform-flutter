@@ -7,9 +7,9 @@ import uuid
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sympy import (
-    symbols, I, exp, Integral, oo, latex, simplify, expand, diff, Derivative, re, im, sqrt, factorial,
+    symbols, I, exp, Integral, oo, latex, simplify, expand, diff, Derivative, re, im, sqrt, N, factorial,
     Add, Mul, pi, sin, cos, Piecewise, Abs, sign, factor_terms
-, Function, together, fraction, Poly, div, apart, Wild, srepr)
+, Function, together, fraction, Poly, div, apart, limit, roots, Wild, srepr)
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.parsing.sympy_parser import (
     parse_expr, standard_transformations, implicit_multiplication_application
@@ -31,8 +31,8 @@ from sympy.parsing.sympy_parser import (
 #         ∫ e^{-j(ω-ω0)t} dt = 2π δ(ω-ω0)
 #   - Otherwise fall back to property rules + integral fallback.
 # ============================================================
-
-app = FastAPI(title="Fourier Backend (Engineering Convention, ω real)")
+#(Engineering Convention, ω real)
+app = FastAPI(title="Fourier Backend ")
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -200,6 +200,80 @@ def _apart_cached(expr):
     _APART_CACHE[key] = v
     return v
 
+
+def _apart_real_roots(expr):
+    """Try real-root partial fractions when sympy.apart(full=False) does not split.
+
+    Returns an Add expression (polynomial part + sum of A_{k}/(t-r)^k) or None.
+    Only triggers when denominator has (provably) real roots (including algebraic radicals).
+    """
+    try:
+        num, den = fraction(_together_cached(expr))
+        Pn, Pd = Poly(num, t), Poly(den, t)
+        if Pd.is_zero:
+            return None
+        # If already a polynomial, nothing to do
+        if Pd.degree() <= 0:
+            return None
+
+        # Polynomial long division to ensure a proper rational remainder
+        q_poly, r_poly = div(Pn, Pd)
+        q_expr = (q_poly.as_expr() if q_poly is not None else 0)
+        r_expr = (r_poly.as_expr() if r_poly is not None else num)
+
+        if r_expr == 0:
+            return q_expr
+
+        proper = r_expr / den
+
+        # Roots with multiplicities (may include algebraic radicals / RootOf)
+        roots_dict = roots(Pd, t)
+        if not roots_dict:
+            return None
+
+        # Require all roots to be real (best-effort: is_real or numeric check)
+        for r, m in roots_dict.items():
+            if getattr(r, "is_real", None) is True:
+                continue
+            if getattr(r, "is_real", None) is False:
+                return None
+            # fall back to numeric check if possible
+            try:
+                if abs(complex(N(r))) == float("inf"):
+                    return None
+                if abs(im(N(r))) > 1e-10:
+                    return None
+            except Exception:
+                # unknown -> be conservative
+                return None
+
+        parts = []
+
+        # Build partial fraction terms for each root/multiplicity
+        for r, m in roots_dict.items():
+            if m == 1:
+                Ak = simplify(limit((t - r) * proper, t, r))
+                if Ak != 0:
+                    parts.append(Ak / (t - r))
+            else:
+                # repeated root: sum_{k=1..m} A_k/(t-r)^k
+                # A_k = 1/(m-k)! * lim_{t->r} d^{m-k}/dt^{m-k} ((t-r)^m * proper)
+                base = (t - r) ** m * proper
+                for k in range(1, m + 1):
+                    deriv_order = m - k
+                    expr_k = base
+                    if deriv_order > 0:
+                        expr_k = diff(expr_k, t, deriv_order)
+                    Ak = simplify(limit(expr_k, t, r) / factorial(deriv_order))
+                    if Ak != 0:
+                        parts.append(Ak / (t - r) ** k)
+
+        if not parts:
+            return None
+
+        return q_expr + Add(*parts, evaluate=False)
+    except Exception:
+        return None
 
 # Rect(x): unit rectangular pulse, rect(x)=1 for |x|<=1/2 else 0
 class Rect(Function):
@@ -617,11 +691,22 @@ def _rule_rational_apart_linearity(f):
         Pn0, Pd0 = Poly(num0, t), Poly(den0, t)
 
         if Pd0.degree() <= 2 and Pn0.degree() <= 1:
-            # If denominator factors into two distinct linear factors in t, do not skip apart.
-            facs = Pd0.factor_list()[1]  # [(factor_poly, exp), ...]
-            degs = [fp.degree() for (fp, _e) in facs]
-            if not (len(facs) == 2 and degs == [1, 1]):
+            # Skip expensive apart only for shapes already covered by dedicated rules:
+            #   1/(t+a), 1/(t+a)^2, and (at+b)/(t^2+c) / 1/(t^2+a^2) (monic, no t-term).
+            # But for general quadratics with real (possibly irrational) roots, we MUST allow decomposition.
+            if Pd0.degree() == 1:
                 return None
+            if Pd0.degree() == 2:
+                try:
+                    a2, a1, a0 = Pd0.all_coeffs()
+                    if simplify(a2 - 1) == 0 and simplify(a1) == 0:
+                        # Only allow apart when it truly splits into two distinct linear factors.
+                        facs = Pd0.factor_list()[1]
+                        degs = [fp.degree() for (fp, _e) in facs]
+                        if not (len(facs) == 2 and degs == [1, 1]):
+                            return None
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -648,7 +733,12 @@ def _rule_rational_apart_linearity(f):
         # partial fractions over reals (keeps irreducible quadratics as needed)
         pf = _apart_cached(f_rem)
         if pf == f_rem:
-            return None
+            # sympy.apart(full=False) may refuse to split when roots are irrational.
+            # If the denominator has real roots, do a lightweight residue-based partial fraction.
+            pf2 = _apart_real_roots(f_rem)
+            if pf2 is None or pf2 == f_rem:
+                return None
+            pf = pf2
 
         # transform each additive term (computation unchanged)
 
