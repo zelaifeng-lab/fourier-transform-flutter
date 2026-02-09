@@ -7,6 +7,129 @@ import 'fourier_transform_state.dart';
 double _cosh(double x) => (math.exp(x) + math.exp(-x)) / 2.0;
 double _sinh(double x) => (math.exp(x) - math.exp(-x)) / 2.0;
 
+// Insert implicit multiplication markers.
+// Examples:
+//   5t -> 5*t
+//   2sin(t) -> 2*sin(t)
+//   sin(5t) -> sin(5*t)
+//   (t+1)(t+2) -> (t+1)*(t+2)
+// Note: we avoid inserting '*' between a known function name and '(' (e.g., sin(...)).
+String _insertImplicitMul(String s) {
+  s = s.replaceAll(' ', '');
+  bool isDigit(int c) => c >= 48 && c <= 57;
+  bool isAlpha(int c) =>
+      (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95; // A-Z a-z _
+  bool isOp(String ch) => '+-*/^,•'.contains(ch);
+
+  final out = StringBuffer();
+
+  String prevType = 'none'; // none|num|id|rpar
+  String prevId = '';
+
+  bool prevIsFuncName() => prevType == 'id' && _isFuncName(prevId);
+
+  int i = 0;
+  while (i < s.length) {
+    final ch = s[i];
+    final cu = ch.codeUnitAt(0);
+
+    // number: 12, 12.3, .5
+    if (isDigit(cu) || (ch == '.' && i + 1 < s.length && isDigit(s.codeUnitAt(i + 1)))) {
+      int j = i;
+      bool seenDot = false;
+      if (s[j] == '.') { seenDot = true; j++; }
+      while (j < s.length) {
+        final cj = s[j];
+        final u = cj.codeUnitAt(0);
+        if (isDigit(u)) { j++; continue; }
+        if (cj == '.' && !seenDot) { seenDot = true; j++; continue; }
+        break;
+      }
+
+      if (prevType == 'num' || prevType == 'id' || prevType == 'rpar') {
+        out.write('*');
+      }
+
+      out.write(s.substring(i, j));
+      prevType = 'num';
+      prevId = '';
+      i = j;
+      continue;
+    }
+
+    // identifier: sin, cos, t, u, abs, exp, pi, I, etc.
+    if (isAlpha(cu)) {
+      int j = i + 1;
+      while (j < s.length) {
+        final uj = s.codeUnitAt(j);
+        if (isAlpha(uj) || isDigit(uj)) { j++; continue; }
+        break;
+      }
+      final id = s.substring(i, j);
+
+      if (prevType == 'num' || prevType == 'id' || prevType == 'rpar') {
+        out.write('*');
+      }
+
+      out.write(id);
+      prevType = 'id';
+      prevId = id;
+      i = j;
+      continue;
+    }
+
+    // parentheses
+    if (ch == '(') {
+      if (!prevIsFuncName() && (prevType == 'num' || prevType == 'id' || prevType == 'rpar')) {
+        out.write('*');
+      }
+      out.write('(');
+      prevType = 'none';
+      prevId = '';
+      i++;
+      continue;
+    }
+    if (ch == ')') {
+      out.write(')');
+      prevType = 'rpar';
+      prevId = '';
+      i++;
+      continue;
+    }
+
+    // operators / others
+    if (isOp(ch)) {
+      out.write(ch);
+      prevType = 'none';
+      prevId = '';
+      i++;
+      continue;
+    }
+
+    // passthrough
+    out.write(ch);
+    prevType = 'none';
+    prevId = '';
+    i++;
+  }
+
+  return out.toString();
+}
+
+bool _isFuncName(String id) {
+  // Must match the function names supported by the local parser.
+  // Add more names here if you add more _Func1/_Func2 implementations.
+  const funcs = <String>{
+    'sin', 'cos', 'tan',
+    'sinh', 'cosh',
+    'exp', 'abs',
+    'u', 'heaviside',
+    'delta',
+    'frac',
+  };
+  return funcs.contains(id);
+}
+
 class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformState> {
   FourierTransformBloc() : super(FourierTransformState.initial()) {
     on<TransformExpressionRequested>(_onTransform);
@@ -21,7 +144,7 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
       TransformExpressionRequested event,
       Emitter<FourierTransformState> emit,
       ) async {
-    final expr = event.expression.trim();
+    final expr = _insertImplicitMul(event.expression.trim());
     final n = event.n;
 
     if (expr.isEmpty) {
