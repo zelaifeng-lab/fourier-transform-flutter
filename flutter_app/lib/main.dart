@@ -41,11 +41,37 @@ class _HomePageState extends State<HomePage> {
   int _cursor = 0;
 
   int _pow2 = 9;
-  double _a = 1.0;
+  static const double _defaultA = 1.0;
+  // Example inputs (cycle with Previous/Next)
+  static const List<String> _examples = <String>[
+    'u(t)',
+    'delta(t)',
+    'frac(1, t)',
+    'frac(1, t+3)',
+    'frac(1, t^2+1)',
+    'sin(t)',
+    'cos(t)',
+    'exp(I*3*t)',
+    'exp(-t)*u(t)',
+    'sin(t)*u(t)',
+    'cos(t)*u(t)',
+    't*u(t)',
+    'frac(2*t+3, t^2+6)',
+    'frac(2*t, 3*t^2+4*t-1)',
+  ];
+  int _exampleIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    // Align default expression to example list if possible
+    final idx = _examples.indexOf(_expr);
+    if (idx >= 0) {
+      _exampleIndex = idx;
+    } else {
+      _exampleIndex = 0;
+      _expr = _examples[0];
+    }
     _cursor = _expr.indexOf('□');
     if (_cursor < 0) _cursor = _expr.length;
   }
@@ -56,6 +82,22 @@ class _HomePageState extends State<HomePage> {
       _cursor = (cursor ?? _cursor).clamp(0, _expr.length);
     });
   }
+
+
+  void _applyExample(int idx) {
+    if (_examples.isEmpty) return;
+    final i = (idx % _examples.length + _examples.length) % _examples.length;
+    setState(() {
+      _exampleIndex = i;
+      _expr = _examples[i];
+      final c = _expr.indexOf('□');
+      _cursor = (c >= 0) ? c : _expr.length;
+    });
+  }
+
+  void _nextExample() => _applyExample(_exampleIndex + 1);
+
+  void _prevExample() => _applyExample(_exampleIndex - 1);
 
   void _insert(String s) {
     if (_cursor < _expr.length && _expr[_cursor] == '□') {
@@ -166,20 +208,7 @@ class _HomePageState extends State<HomePage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Fourier Transform'),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                final v = await showDialog<double>(
-                  context: context,
-                  builder: (_) => _AInputDialog(initial: _a),
-                );
-                if (v != null) setState(() => _a = v);
-              },
-              child: Text('a = ${_a.toStringAsPrecision(4)}'),
-            ),
-          ],
-        ),
+          title: const Text('Fourier Transform'),),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -188,7 +217,28 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FormulaPreview(expression: _expr, cursor: _cursor, a: _a),
+                  _FormulaPreview(expression: _expr, cursor: _cursor),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _prevExample,
+                        child: const Text('Previous'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: _nextExample,
+                        child: const Text('Next'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Example ${_exampleIndex + 1}/${_examples.length}: ${_examples[_exampleIndex]}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   _Keypad(
                     onInsert: _insert,
@@ -237,7 +287,7 @@ class _HomePageState extends State<HomePage> {
                       TransformExpressionRequested(
                         expression: _expr,
                         pow2: _pow2,
-                        a: _a,
+                        a: _defaultA,
                       ),
                     );
                   },
@@ -267,12 +317,10 @@ class _HomePageState extends State<HomePage> {
 class _FormulaPreview extends StatelessWidget {
   final String expression;
   final int cursor;
-  final double a;
 
   const _FormulaPreview({
     required this.expression,
     required this.cursor,
-    required this.a,
   });
 
   String _latexify(String expr) {
@@ -456,7 +504,7 @@ class _FormulaPreview extends StatelessWidget {
       // Imaginary unit
       out = out.replaceAllMapped(RegExp(r'\bI\b'), (_) => r'i');
 
-      out = out.replaceAllMapped(RegExp(r'\ba\b'), (_) => a.toStringAsPrecision(4));
+      // NOTE: constant 'a' substitution removed (UI no longer sets a).
 
       out = out.replaceAll('*', r'\cdot ');
       out = out.replaceAll('•', r'\bullet ');
@@ -495,7 +543,6 @@ class _FormulaPreview extends StatelessWidget {
               children: [
                 Text('Preview', style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
-                Text('a=$a', style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
             const SizedBox(height: 8),
@@ -699,104 +746,12 @@ class _Keypad extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _btn('a', onTap: () => onInsert('a')),
             _btn('(', onTap: () => onInsert('(')),
             _btn(')', onTap: () => onInsert(')')),
             _btn(',', onTap: () => onInsert(',')),
           ],
         ),
       ],
-    );
-  }
-}
-
-class _AInputDialog extends StatefulWidget {
-  final double initial;
-  const _AInputDialog({required this.initial});
-
-  @override
-  State<_AInputDialog> createState() => _AInputDialogState();
-}
-
-class _AInputDialogState extends State<_AInputDialog> {
-  late String _text;
-
-  @override
-  void initState() {
-    super.initState();
-    _text = widget.initial.toString();
-  }
-
-  void _append(String s) => setState(() => _text += s);
-  void _backspace() => setState(() => _text.isEmpty ? '' : _text.substring(0, _text.length - 1));
-  void _clear() => setState(() => _text = '');
-  void _dot() {
-    if (_text.contains('.')) return;
-    setState(() => _text = _text.isEmpty ? '0.' : '$_text.');
-  }
-
-  void _neg() {
-    setState(() {
-      if (_text.startsWith('-')) {
-        _text = _text.substring(1);
-      } else {
-        _text = '-$_text';
-      }
-    });
-  }
-
-  double? _parse() => double.tryParse(_text.trim());
-
-  Widget _k(String label, VoidCallback onTap, {bool wide = false}) => SizedBox(
-    width: wide ? 140 : 80,
-    height: 54,
-    child: OutlinedButton(onPressed: onTap, child: Text(label, style: const TextStyle(fontSize: 18))),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Set parameter a'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Theme.of(context).dividerColor),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(_text.isEmpty ? '0' : _text, style: Theme.of(context).textTheme.titleLarge),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _k('7', () => _append('7')),
-              _k('8', () => _append('8')),
-              _k('9', () => _append('9')),
-              _k('⌫', _backspace),
-              _k('4', () => _append('4')),
-              _k('5', () => _append('5')),
-              _k('6', () => _append('6')),
-              _k('AC', _clear),
-              _k('1', () => _append('1')),
-              _k('2', () => _append('2')),
-              _k('3', () => _append('3')),
-              _k('±', _neg),
-              _k('0', () => _append('0')),
-              _k('.', _dot),
-              _k('OK', () {
-                final v = _parse();
-                if (v == null) return;
-                Navigator.of(context).pop(v);
-              }, wide: true),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
