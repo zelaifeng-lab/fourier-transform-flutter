@@ -34,19 +34,6 @@ from sympy.parsing.sympy_parser import (
 #(Engineering Convention, ω real)
 app = FastAPI(title="Fourier Backend ")
 
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://zelaifeng-lab.github.io",   # 你的 GitHub Pages 域名
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],   # 允许 POST/OPTIONS 等
-    allow_headers=["*"],   # 允许 Content-Type 等
-)
-
-
 # ---------- middleware: per-request performance summary ----------
 from starlette.requests import Request
 from starlette.responses import Response
@@ -175,6 +162,32 @@ class _PerfTimer:
 
 t = symbols("t", real=True)
 omega = symbols("omega", real=True)
+
+def _tb_make_steps(*, recognize_lines, strategy_lines, pair_lines, combine_lines, final_expr):
+    """
+    Build a unified textbook-style step list:
+      Identify -> Split/Properties -> Known pairs -> Combine/Simplify -> Final
+
+    All inputs are lists of LaTeX strings (WITHOUT surrounding $$).
+    This only changes narration; it must not affect computation.
+    """
+    steps = []
+    steps.append(r"\textbf{Step 1: Identify}")
+    steps.extend([s for s in (recognize_lines or []) if s])
+
+    steps.append(r"\textbf{Step 2: Choose properties / decomposition}")
+    steps.extend([s for s in (strategy_lines or []) if s])
+
+    steps.append(r"\textbf{Step 3: Apply known transform pairs}")
+    steps.extend([s for s in (pair_lines or []) if s])
+
+    steps.append(r"\textbf{Step 4: Combine and simplify}")
+    steps.extend([s for s in (combine_lines or []) if s])
+
+    steps.append(r"\textbf{Final Result}")
+    steps.append(r"X(ω)=" + latex(final_expr))
+    return steps
+
 
 # ---------- lightweight caches for expensive SymPy operations ----------
 _TOGETHER_CACHE = {}
@@ -667,7 +680,7 @@ def _rule_linear_over_t2_plus_c(f):
             r"\text{Known pair: }\frac{1}{t^2+c}\;\xleftrightarrow{\mathcal{F}}\;\frac{\pi}{\sqrt{c}}e^{-\sqrt{c}|\omega|},\;c>0",
             r"\text{And }\frac{t}{t^2+c}\;\xleftrightarrow{\mathcal{F}}\;-j\pi\,\mathrm{sign}(\omega)e^{-\sqrt{c}|\omega|}",
             r"\text{Decompose: }\frac{a t + b}{t^2+c}=a\frac{t}{t^2+c}+b\frac{1}{t^2+c}",
-            r"c=" + latex(c),
+            r"	ext{Identify parameters: }a=%s,\;b=%s,\;c=%s" % (latex(a), latex(b), latex(c)),
             r"X(\omega)=" + latex(X),
             ]
         X = _omega_real_cleanup(X)
@@ -1099,6 +1112,8 @@ def _derive_with_properties(f):
             r"\text{(Distribution)}\;\mathcal{F}\{\mathrm{PV}\tfrac{1}{t}\}=-i\pi\,\mathrm{sign}(\omega)",
             r"\text{Time shift: }\mathcal{F}\{g(t-t_0)\}=e^{-i\omega t_0}G(\omega)",
         ]
+        steps.append(r"\text{For this term: }a=" + latex(a1) + r",\;t_0=-a=" + latex(-a1) + r",\;e^{-i\omega t_0}=e^{i\omega a}")
+
         if c0 != 1:
             steps.append(r"\text{Linearity: }\mathcal{F}\{c\,g(t)\}=c\,G(\omega),\; c=" + latex(c0))
         steps += [
@@ -1619,6 +1634,7 @@ def _rule_pv_reciprocal(f):
             r"\mathrm{PV}\!\int_{-\infty}^{\infty}\frac{e^{-i\omega t}}{t}\,dt=-i\pi\,\mathrm{sign}(\omega)",
             r"\frac{1}{a t+b}=\frac{1}{a}\,\frac{1}{t+\frac{b}{a}}",
             r"\Rightarrow\;X(\omega)=-\frac{i\pi}{a}\,e^{i\omega\frac{b}{a}}\,\mathrm{sign}(\omega)",
+            r"\text{Substitute }a=%s,\;b=%s\;\Rightarrow\;\frac{b}{a}=%s\;\Rightarrow\;X(\omega)=%s" % (latex(a), latex(b), latex(shift), (_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X)))),
             r"X(\omega)=" + latex(X),
             ]
         return ("distribution_form", True, X, steps, "", None)
