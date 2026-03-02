@@ -130,6 +130,128 @@ bool _isFuncName(String id) {
   return funcs.contains(id);
 }
 
+
+
+// ---------------- Engineering auto time-window ----------------
+// Many signals (e.g. u(t-2)-u(t-5)) need a time window that actually includes
+// the shift locations, otherwise the plotted waveform looks "wrong" simply
+// because the window cuts it off.
+//
+// Strategy (fast, regex-based):
+// - Look for u(t±c), heaviside(t±c), delta(t±c), abs(t±c)
+// - Extract constants c (supports numbers and simple pi multiples/fractions)
+// - Choose symmetric window [-W, W] with W = max(pi, max(|shift|)+margin)
+//
+// NOTE: This is for the *local FFT/plot* path only; it does not affect backend.
+double _autoWindowHalfWidth(String expr, {double margin = 3.0}) {
+  final s = expr.replaceAll(' ', '');
+  final shifts = <double>[];
+
+  final re1 = RegExp(r'(?:u|heaviside|delta|abs)\(t([+\-][^)]+)\)');
+  for (final m in re1.allMatches(s)) {
+    final off = m.group(1) ?? '';
+    final c = _tryParseConst(off);
+    if (c != null) {
+      // t + c  == t - (-c)  => shift = -c
+      final shift = -c;
+      shifts.add(shift.abs());
+    }
+  }
+
+  // Also capture patterns like u(t-2)u(t-5) already handled; this is just a safe fallback.
+  double maxShift = 0.0;
+  for (final v in shifts) {
+    if (v > maxShift) maxShift = v;
+  }
+
+  final base = math.pi;
+  final w = math.max(base, maxShift + margin);
+  // Avoid zero or extremely tiny windows
+  return w.isFinite && w > 1e-6 ? w : base;
+}
+
+// Parse a numeric constant expression appearing in shifts.
+// Supported: numbers, +/-, simple fractions (a/b), pi, k*pi, pi/k, k*pi/m.
+double? _tryParseConst(String s) {
+  var x = s.replaceAll(' ', '');
+  if (x.isEmpty) return null;
+
+  // normalize leading '+'
+  if (x.startsWith('+')) x = x.substring(1);
+
+  // Quick path: plain double
+  final direct = double.tryParse(x);
+  if (direct != null) return direct;
+
+  // Replace Unicode minus if any
+  x = x.replaceAll('−', '-');
+
+  // Handle fractions like "2/3"
+  double? parseFrac(String y) {
+    final parts = y.split('/');
+    if (parts.length == 1) return double.tryParse(parts[0]);
+    if (parts.length == 2) {
+      final a = double.tryParse(parts[0]);
+      final b = double.tryParse(parts[1]);
+      if (a != null && b != null && b != 0) return a / b;
+    }
+    return null;
+  }
+
+  // Handle pi forms
+  // Examples: pi, -pi, 2*pi, -3*pi/2, pi/4, 5*pi/3
+  if (x.contains('pi')) {
+    // remove outer parentheses
+    if (x.startsWith('(') && x.endsWith(')')) {
+      x = x.substring(1, x.length - 1);
+    }
+
+    // sign
+    double sign = 1.0;
+    if (x.startsWith('-')) {
+      sign = -1.0;
+      x = x.substring(1);
+    }
+
+    // Now x contains pi somewhere
+    // Standardize: split by 'pi'
+    final parts = x.split('pi');
+    // parts[0] is coefficient part (possibly like "2*" or "5*")
+    // parts[1] is remaining (possibly like "/3" or "*something" but we only support /k)
+    double coef = 1.0;
+
+    if (parts[0].isNotEmpty) {
+      var a = parts[0];
+      if (a.endsWith('*')) a = a.substring(0, a.length - 1);
+      coef = parseFrac(a) ?? double.tryParse(a) ?? 1.0;
+    }
+
+    double div = 1.0;
+    if (parts.length > 1 && parts[1].isNotEmpty) {
+      var b = parts[1];
+      // accept "/k" or "/(k)" or "/2" etc
+      if (b.startsWith('/')) {
+        b = b.substring(1);
+        if (b.startsWith('(') && b.endsWith(')')) {
+          b = b.substring(1, b.length - 1);
+        }
+        final d = parseFrac(b) ?? double.tryParse(b);
+        if (d != null && d != 0) div = d;
+      }
+    }
+
+    return sign * coef * math.pi / div;
+  }
+
+  // Fallback: try simple a/b again after stripping parentheses
+  if (x.startsWith('(') && x.endsWith(')')) {
+    x = x.substring(1, x.length - 1);
+    final v = parseFrac(x);
+    if (v != null) return v;
+  }
+
+  return null;
+}
 class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformState> {
   FourierTransformBloc() : super(FourierTransformState.initial()) {
     on<TransformExpressionRequested>(_onTransform);
@@ -167,9 +289,10 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
     ));
 
     try {
-      // Sampling window: [-π, π)
-      final tMin = -math.pi;
-      final tMax = math.pi;
+      // Sampling window (engineering): choose a window that covers common shifts like u(t-a), delta(t-a), abs(t-a).
+      final halfW = _autoWindowHalfWidth(expr, margin: 3.0);
+      final tMin = -halfW;
+      final tMax = halfW;
       final dt = (tMax - tMin) / n;
       final t = List<double>.generate(n, (i) => tMin + i * dt);
 

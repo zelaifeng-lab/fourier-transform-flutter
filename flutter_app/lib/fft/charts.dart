@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
 import 'step.dart';
-import 'symbol.dart';
+import './symbol.dart';
 
+/// Results page with two tabs:
+/// - Backend (left): symbolic Fourier transform via backend (steps + final result)
+/// - Chart (right): numerical-definition/step visualization (plots)
+///
+/// Note: We keep the same constructor signature used by the FFT pipeline,
+/// even though the Backend tab only needs [expression].
 class ResultsPage extends StatelessWidget {
   final String expression;
 
+  // Time-domain samples (for StepPage / charts)
   final List<double> t;
   final List<double> signal;
   final double dt;
 
-  // Kept for compatibility with bloc output (not used by Symbol tab)
+  // FFT output (currently unused by this tab layout, but kept for compatibility)
   final List<double> omega;
   final List<double> magnitude;
 
@@ -33,15 +40,17 @@ class ResultsPage extends StatelessWidget {
           title: const Text('Results'),
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Symbol'),
-              Tab(text: 'Steps'),
+              Tab(text: 'Step'),
+              Tab(text: 'Chart'),
             ],
           ),
         ),
         body: TabBarView(
+          // Order must match TabBar order:
+          // left = Backend, right = Chart
           children: [
-            StepPage(t: t, x: signal, dt: dt),
             SymbolPage(expression: expression),
+            StepPage(t: t, x: signal, dt: dt),
           ],
         ),
       ),

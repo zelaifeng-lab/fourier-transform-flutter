@@ -42,13 +42,13 @@ class _HomePageState extends State<HomePage> {
 
   int _pow2 = 9;
   static const double _defaultA = 1.0;
-  // Example inputs (cycle with Previous/Next)
+  /// Example inputs (simple list)
   static const List<String> _examples = <String>[
     'u(t)',
     'delta(t)',
-    'frac(1, t)',
-    'frac(1, t+3)',
-    'frac(1, t^2+1)',
+    'frac(1,t)',
+    'frac(1,t+3)',
+    'frac(1,t^2+1)',
     'sin(t)',
     'cos(t)',
     'exp(I*3*t)',
@@ -56,15 +56,31 @@ class _HomePageState extends State<HomePage> {
     'sin(t)*u(t)',
     'cos(t)*u(t)',
     't*u(t)',
-    'frac(2*t+3, t^2+6)',
-    'frac(2*t, 3*t^2+4*t-1)',
+    'frac(2*t+3,t^2+6)',
+    'frac(2*t,3*t^2+4*t-1)',
+    'sin(3*t+2)/5',
+    'cos(4*t-1)/3',
+    'exp(I*(5*t+2))/4',
+    'sin(2*t)+cos(3*t)',
+    'sin(5*t+1)*u(t)',
+    't^2*u(t)',
+    'u(t-2)-u(t-5)',
+    'delta(t-1)',
+    'cos(4*t-1)/5',
+    'exp(I*(5*t+2))/5',
+    'exp(-2*t)*u(t)',
+    'cos(2*t-3)*u(t)',
+    'frac(1,3*t-2)',
+    'frac(2,t+1)/5',
+    'exp(I*2*t)+exp(-I*2*t)',
   ];
+
   int _exampleIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    // Align default expression to example list if possible
+    //
     final idx = _examples.indexOf(_expr);
     if (idx >= 0) {
       _exampleIndex = idx;
