@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-
 
 class StepPage extends StatefulWidget {
   final List<double> t;
@@ -178,7 +178,10 @@ class _StepPageState extends State<StepPage> {
         padding: const EdgeInsets.all(16),
         children: [
           _Card(
-            title: 'Set ω (rad/s)',
+            title: Math.tex(
+              r'\text{Set }\omega\ \text{(rad/s)}',
+              textStyle: Theme.of(context).textTheme.titleMedium,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -205,28 +208,41 @@ class _StepPageState extends State<StepPage> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Text('ω = ${_omega.toStringAsPrecision(8)}'),
+                Math.tex(r'\omega = ' + _omega.toStringAsPrecision(8)),
                 Slider(
                   min: -_omegaMax,
                   max: _omegaMax,
                   value: _omega.clamp(-_omegaMax, _omegaMax),
                   onChanged: (v) => _setOmega(v),
                 ),
-                Text(
-                  'Nyquist range: [${(-_omegaMax).toStringAsPrecision(4)}, ${_omegaMax.toStringAsPrecision(4)}]',
-                  style: Theme.of(context).textTheme.bodySmall,
+                Math.tex(
+                  r'\text{Nyquist range: }\omega\in['
+                  '${(-_omegaMax).toStringAsPrecision(4)}, '
+                      '${_omegaMax.toStringAsPrecision(4)}]',
+                  textStyle: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  'X(ω) ≈ Re=${Xre.toStringAsPrecision(6)}, Im=${Xim.toStringAsPrecision(6)}, |X|=${Xmag.toStringAsPrecision(6)}',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                Math.tex(
+                  r'X(\omega)\approx '
+                      + Xre.toStringAsPrecision(6)
+                      + r' + j\,'
+                      + Xim.toStringAsPrecision(6)
+                      + r',\quad '
+                  r'\mathrm{Re}\{X\}='
+                      + Xre.toStringAsPrecision(6)
+                      + r',\ '
+                  r'\mathrm{Im}\{X\}='
+                      + Xim.toStringAsPrecision(6)
+                      + r',\ |X|='
+                      + Xmag.toStringAsPrecision(6),
+                  textStyle: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: '1) Original signal x(t)',
+            title: Math.tex(r'1)\ \mathrm{Original\ signal}\ \; x(t)'),
             xTitle: 't',
             yTitle: 'x(t)',
             series: [
@@ -235,7 +251,9 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: '2) Kernel e^{-jωt} = cos(ωt) - j sin(ωt)',
+            title: Math.tex(
+              r'2)\ \mathrm{Kernel}\ \; e^{-j\omega t}=\cos(\omega t)-j\sin(\omega t)',
+            ),
             xTitle: 't',
             yTitle: 'kernel',
             series: [
@@ -245,7 +263,7 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: '3) Integrand x(t)·e^{-jωt}',
+            title: Math.tex(r'3)\ \mathrm{Integrand}\ \; x(t)\cdot e^{-j\omega t}'),
             xTitle: 't',
             yTitle: 'integrand',
             series: [
@@ -255,7 +273,10 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: '4) Running integral (cumulative)  ∫ x(t)e^{-jωt} dt',
+            title: Math.tex(
+              r'4)\ \mathrm{Running\ integral\ (cumulative)}\ \;'
+              r'\int x(t)e^{-j\omega t}\,dt',
+            ),
             xTitle: 't',
             yTitle: 'X(ω) up to t',
             series: [
@@ -265,9 +286,11 @@ class _StepPageState extends State<StepPage> {
             ],
           ),
           const SizedBox(height: 16),
-
           _Card(
-            title: '5) Integral result vs ω  (ω-axis curve)',
+            title: Math.tex(
+              r'5)\ \text{Integral result vs }\omega\ \text{(}\omega\text{-axis curve)}',
+              textStyle: Theme.of(context).textTheme.titleMedium,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -288,6 +311,12 @@ class _StepPageState extends State<StepPage> {
                     im: _sweepIm,
                     mag: _sweepMag,
                   ),
+                ),
+                const SizedBox(height: 8),
+                // A LaTeX-rendered legend hint (Syncfusion legend itself is plain text).
+                Math.tex(
+                  r'\mathrm{Legend:}\ \mathrm{Re}\{X(\omega)\},\ \mathrm{Im}\{X(\omega)\},\ |X(\omega)|',
+                  textStyle: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -348,7 +377,7 @@ class _OmegaChart extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  final String title;
+  final Widget title;
   final Widget child;
   const _Card({required this.title, required this.child});
 
@@ -365,7 +394,10 @@ class _Card extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            DefaultTextStyle.merge(
+              style: Theme.of(context).textTheme.titleMedium,
+              child: title,
+            ),
             const SizedBox(height: 8),
             child,
           ],
@@ -383,7 +415,7 @@ class _SeriesData {
 }
 
 class _ChartCard extends StatelessWidget {
-  final String title;
+  final Widget title;
   final String xTitle;
   final String yTitle;
   final List<_SeriesData> series;
