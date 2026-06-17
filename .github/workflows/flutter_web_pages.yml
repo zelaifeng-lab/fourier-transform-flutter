@@ -37,7 +37,7 @@ jobs:
           flutter build web --release --base-href "$BASE_HREF"
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: flutter_app/build/web
 
@@ -46,4 +46,4 @@ jobs:
     needs: build
     steps:
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

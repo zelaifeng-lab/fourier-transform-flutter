@@ -5,3 +5,5 @@ __pycache__/
 flutter_app/build/
 flutter_app/.dart_tool/
 .lo-profile*/
+*.docx
+*.pdf
