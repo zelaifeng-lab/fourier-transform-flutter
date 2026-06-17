@@ -73,6 +73,9 @@ Polynomial times step rule:
 | E06 | `exp(-3*abs(t))` | `6/(9+omega^2)` | true | Two-sided decaying exponential |
 | E07 | `exp(-a*t)*u(t)` | `1/(a+I*omega), a>0` | false | Future parameter rule |
 | E08 | `exp(-a*abs(t))` | `2*a/(a^2+omega^2), a>0` | false | Future parameter rule |
+| E09 | `exp(I*2*t)*u(t-3)` | Shifted modulated step: `exp(-I*(omega-2)*3)*(pi*delta(omega-2)-I*PV(1/(omega-2)))` | true | Distribution form; no direct integral |
+| E10 | `exp(I*(2*t+1))*u(t+3)` | Shifted modulated step with phase: `exp(I)*exp(I*(omega-2)*3)*(pi*delta(omega-2)-I*PV(1/(omega-2)))` | true | Distribution form; no direct integral |
+| E11 | `3*exp(-I*t)*u(t-2)` | Scaled shifted modulated step around `omega=-1` | true | Distribution form; no direct integral |
 
 ## 4. Trigonometric Signals
 
@@ -87,6 +90,16 @@ Polynomial times step rule:
 | T07 | `sin(t)+cos(2*t)` | Linear combination of T01 and `cos(2*t)` | true | Linearity |
 | T08 | `sin(t)*u(t)` | Principal-value rational terms plus delta terms | true | Assert equivalent distribution form |
 | T09 | `cos(t)*u(t)` | Principal-value rational terms plus delta terms | true | Assert equivalent distribution form |
+| T10 | `sin(t-1)*u(t+3)` | Shifted-step sinusoid: rewrite with `s=t+3`, then use modulated unit-step PV/delta terms and time shift | true | Assert no direct-integral `Piecewise` result |
+| T11 | `cos(2*t+1)*u(t-3)` | Shifted-step cosine: rewrite with `s=t-3`, then use modulated unit-step PV/delta terms and time shift | true | Assert no direct-integral `Piecewise` result |
+
+## 4.1 Distributive And Window Linearity
+
+| ID | Expression | Expected result | Implemented | Notes |
+|---|---|---|---|---|
+| D01 | `(exp(I*2*t)+exp(-I*t))*u(t-3)` | Distribute into two shifted modulated-step terms and sum their PV/delta results | true | Assert no direct-integral `Piecewise` result |
+| D02 | `2*(t*u(t)+sin(t)*u(t))` | Distribute into polynomial-step and trig-step terms, then apply linearity | true | Assert no direct-integral `Piecewise` result |
+| W08 | `t*(u(t)-u(t-1))` | Finite polynomial-window integral over `[0,1]` | true | Assert no direct-integral `Piecewise` result |
 
 ## 5. Rational Functions And Principal Values
 

@@ -87,10 +87,11 @@ TEACHING_STEP_SNAPSHOTS = (
     (
         "sin(t)*u(t)",
         (
-            r"\textbf{Step 2: Identify a sinusoid multiplied by the unit step}",
-            r"a=1,\quad b=0,\quad \omega_0=\pm 1",
-            r"\textbf{Step 3: Rewrite the sinusoid with Euler's identity}",
-            r"\textbf{Step 4: Use the modulated unit-step transform}",
+            r"\textbf{Step 2: Identify a sinusoid multiplied by a shifted unit step}",
+            r"a=1,\quad b=0,\quad c=0",
+            r"\textbf{Step 3: Move the step edge to the origin}",
+            r"a c+b=0",
+            r"\textbf{Step 5: Use the modulated unit-step transform}",
             r"PV appears because each modulated step remains one-sided",
         ),
     ),

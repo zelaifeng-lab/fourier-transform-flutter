@@ -564,6 +564,7 @@ def _format_step_display_latex(text: str) -> str:
     s = s.replace(r"i\omega", r"j\omega")
     s = s.replace(r"i \omega", r"j \omega")
     s = s.replace(r"-i", r"-j")
+    s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
     return s
 
 
@@ -589,6 +590,11 @@ def _format_result_display_latex(text: str) -> str:
             rf"\operatorname{{PV}}{{\left(\frac{{1}}{{{term}}} \right)}}",
             rf"\mathrm{{PV}}\frac{{1}}{{{term}}}",
         )
+    s = _regex.sub(
+        r"\\operatorname\{PV\}\{\\left\(\\frac\{1\}\{([^{}]+)\} \\right\)\}",
+        r"\\mathrm{PV}\\frac{1}{\1}",
+        s,
+    )
     s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
     return s
 
@@ -1030,6 +1036,128 @@ def _rule_finite_step_window(f):
     return "distribution_form", True, X, steps, "", None
 
 
+def _match_finite_step_window_add(expr):
+    if not isinstance(expr, Add):
+        return None
+    terms = list(expr.args)
+    if len(terms) != 2:
+        return None
+
+    p0 = _heaviside_shift_and_coeff(terms[0])
+    p1 = _heaviside_shift_and_coeff(terms[1])
+    if p0 is None or p1 is None:
+        return None
+
+    c0, s0 = p0
+    c1, s1 = p1
+    if simplify(c0 - 1) == 0 and simplify(c1 + 1) == 0:
+        return simplify(s0), simplify(s1)
+    if simplify(c1 - 1) == 0 and simplify(c0 + 1) == 0:
+        return simplify(s1), simplify(s0)
+    return None
+
+
+def _rule_polynomial_finite_step_window(f):
+    if not isinstance(f, Mul):
+        return None
+
+    window = None
+    others = []
+    for arg in f.args:
+        match = _match_finite_step_window_add(arg)
+        if match is not None and window is None:
+            window = (arg, match)
+        else:
+            others.append(arg)
+    if window is None:
+        return None
+
+    window_expr, (a, b) = window
+    p = simplify(Mul(*others)) if others else 1
+    if not p.is_polynomial(t):
+        return None
+
+    try:
+        poly = Poly(p, t)
+    except Exception:
+        return None
+
+    k = -I*omega
+
+    def _anti_monomial(n, x):
+        pieces = []
+        for m in range(n + 1):
+            pieces.append(((-1)**m) * factorial(n) / factorial(n - m) * (x**(n - m)) / (k**(m + 1)))
+        return exp(k*x) * Add(*pieces, evaluate=False)
+
+    X_parts = []
+    for (degree,), coeff in poly.terms():
+        n = int(degree)
+        X_parts.append(coeff * (_anti_monomial(n, b) - _anti_monomial(n, a)))
+    X = simplify(Add(*X_parts, evaluate=False))
+    if isinstance(X, Piecewise):
+        return None
+
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a polynomial finite-window signal}",
+        r"x(t)=p(t)\left[u(t-a)-u(t-b)\right],\quad p(t)=" + latex(p),
+        r"\text{Here }a=" + latex(a) + r",\quad b=" + latex(b),
+        r"\textbf{Step 3: Replace the full integral by the finite interval}",
+        r"X(\omega)=\int_{" + latex(a) + r"}^{" + latex(b) + r"}p(t)e^{-j\omega t}\,dt",
+        r"\textbf{Step 4: Evaluate the finite polynomial integral}",
+    ]
+    steps += _step_final_result(X)
+    return "closed_form", True, X, steps, "", None
+
+
+def _rule_distributed_linearity(f):
+    if not (isinstance(f, Mul) and any(isinstance(arg, Add) for arg in f.args)):
+        return None
+
+    distributed = expand(f)
+    if not isinstance(distributed, Add) or distributed == f:
+        return None
+
+    terms = list(Add.make_args(distributed))
+    if len(terms) < 2 or len(terms) > 12:
+        return None
+
+    X_terms = []
+    term_data = []
+    form = "closed_form"
+    conds = []
+    for term in terms:
+        form_k, ok_k, Xk, _steps_k, cond_k, err_k = _derive_with_properties(term)
+        if not ok_k or err_k or isinstance(Xk, Piecewise):
+            return None
+        latex_xk = latex(Xk)
+        if any(token in latex_xk for token in ("Piecewise", "RootSum", "arg", "polar_lift", "meijerg")):
+            return None
+        if form_k == "distribution_form":
+            form = "distribution_form"
+        elif form_k == "integral_form" and form != "distribution_form":
+            form = "integral_form"
+        if cond_k:
+            conds.append(cond_k)
+        X_terms.append(Xk)
+        term_data.append((term, Xk))
+
+    X = _omega_real_cleanup(Add(*X_terms, evaluate=False))
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Distribute multiplication over addition}",
+        r"x(t)=" + _format_step_display_latex(latex(distributed)),
+        r"\textbf{Step 3: Apply linearity term by term}",
+        r"X(\omega)=\sum_k X_k(\omega)",
+    ]
+    for k, (term, Xk) in enumerate(term_data, start=1):
+        steps.append(r"\textbf{Term " + str(k) + r": }x_k(t)=" + _format_step_display_latex(latex(term)))
+        steps.append(r"X_" + str(k) + r"(\omega)=" + _format_result_display_latex(latex(Xk)))
+    steps += _step_final_result(X)
+    return form, True, X, steps, r"\;\;".join(conds), None
+
+
 def _rule_abs_exponential(f):
     if getattr(f, "func", None) != exp or len(f.args) != 1:
         return None
@@ -1073,9 +1201,17 @@ def _derive_with_properties(f):
     if finite_window_res is not None:
         return finite_window_res
 
+    poly_window_res = _rule_polynomial_finite_step_window(f)
+    if poly_window_res is not None:
+        return poly_window_res
+
     shifted_step_res = _rule_shifted_heaviside_distribution(f)
     if shifted_step_res is not None:
         return shifted_step_res
+
+    modulated_step_res = _rule_modulated_step(f)
+    if modulated_step_res is not None:
+        return modulated_step_res
 
     abs_exp_res = _rule_abs_exponential(f)
     if abs_exp_res is not None:
@@ -1146,6 +1282,10 @@ def _derive_with_properties(f):
     rat_res = _rule_rational_apart_linearity(f)
     if rat_res is not None:
         return rat_res
+
+    distributed_res = _rule_distributed_linearity(f)
+    if distributed_res is not None:
+        return distributed_res
 
 
 
@@ -1685,25 +1825,66 @@ def fourier(req: FourierRequest):
 # ===== Extra rules: modulated step, B-spline, damped oscillation =====
 
 def _rule_modulated_step(f):
-    if isinstance(f, Mul) and f.has(Heaviside):
-        for h in f.atoms(Heaviside):
-            if len(h.args)==1:
-                a = symbols("a", real=True)
-                m = h.args[0].match(t-a)
-                if m and a in m:
-                    a0 = m[a]
-                    rest = simplify(f/h)
-                    w0 = symbols("w0", real=True)
-                    mm = rest.match(exp(I*w0*t))
-                    if mm and w0 in mm:
-                        ww = mm[w0]
-                        X = exp(-I*omega*a0)/(I*(omega-ww))
-                        steps=[
-                            r"x(t)=e^{j\omega_0 t}u(t-a)",
-                            r"X(\omega)=e^{-j\omega a}\frac{1}{j(\omega-\omega_0)}",
-                            r"X(\omega)="+latex(X)
-                        ]
-                        return ("distribution_form",True,X,steps,"",None)
+    if not (isinstance(f, Mul) and f.has(Heaviside)):
+        return None
+
+    h_t = None
+    step_shift = None
+    for h in f.atoms(Heaviside):
+        if len(h.args) < 1:
+            continue
+        shift = _match_heaviside_shift(h)
+        if shift is not None:
+            h_t = h
+            step_shift = simplify(shift)
+            break
+    if h_t is None:
+        return None
+
+    rest = simplify(f / h_t)
+    coeff, exp_part = rest.as_independent(t, as_Add=False)
+    if exp_part.func != exp or len(exp_part.args) != 1:
+        return None
+
+    phase = simplify(exp_part.args[0] / I)
+    if phase.has(I):
+        return None
+    lin = _as_linear_in_t(phase)
+    if lin is None:
+        return None
+
+    w0, phi = lin
+    c = simplify(step_shift)
+    shifted_phase = simplify(w0*c + phi)
+    base = pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
+    X = simplify(coeff * exp(I*shifted_phase) * exp(-I*omega*c) * base)
+
+    if coeff == 1:
+        coeff_latex = ""
+    elif coeff == -1:
+        coeff_latex = "-"
+    else:
+        coeff_latex = latex(coeff)
+
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a modulated unit-step signal}",
+        r"x(t)=" + coeff_latex + r"e^{j(" + latex(w0) + r"t+" + latex(phi) + r")}u(t-c)",
+        r"\text{Here }\omega_0=" + latex(w0) + r",\quad \phi=" + latex(phi) + r",\quad c=" + latex(c),
+        r"\textbf{Step 3: Move the step edge to the origin}",
+        r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)",
+        r"e^{j(\omega_0 t+\phi)}=e^{j(\omega_0 s+\omega_0 c+\phi)}",
+        r"\text{For this input, }\omega_0 c+\phi=" + latex(shifted_phase),
+        r"\textbf{Step 4: Use the modulated unit-step transform}",
+        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+        r"\text{PV appears because the modulated step is one-sided and not absolutely integrable.}",
+        r"\textbf{Step 5: Apply the time-shift property}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+    ]
+    if coeff != 1:
+        steps.append(r"\text{Apply the constant factor }" + latex(coeff) + r"\text{ by linearity.}")
+    steps += _step_final_result(X)
+    return ("distribution_form", True, X, steps, "", None)
     return None
 
 
@@ -1803,22 +1984,28 @@ def _rule_poly_times_step_distribution(f):
 
 def _rule_trig_times_step_distribution(f):
     """
-    Distribution-first for sin(a t + b)u(t), cos(a t + b)u(t).
-    Use Euler form + u(t) base pair shifted in frequency.
+    Distribution-first for sin(a t + b)u(t-c), cos(a t + b)u(t-c).
+    Rewrite around s=t-c, then use Euler form + u(s) shifted in frequency.
     """
     if not (isinstance(f, Mul) and f.has(Heaviside)):
         return None
 
-    # Accept any Heaviside with first argument == t (ignore value-at-0 parameter)
+    # Accept any unit step of the form Heaviside(t-c), including c=0.
     h_t = None
+    step_shift = None
     for h in f.atoms(Heaviside):
-        if len(h.args) >= 1 and simplify(h.args[0] - t) == 0:
+        if len(h.args) < 1:
+            continue
+        shift = _match_heaviside_shift(h)
+        if shift is not None:
             h_t = h
+            step_shift = simplify(shift)
             break
     if h_t is None:
         return None
 
     g = simplify(f / h_t)
+    coeff, trig_part = g.as_independent(t, as_Add=False)
 
     # match sin(a*t+b) or cos(a*t+b) with linear phase
     a = Wild("a", exclude=[t])
@@ -1826,11 +2013,11 @@ def _rule_trig_times_step_distribution(f):
     mm_sin = None
     mm_cos = None
 
-    if g.func == sin:
-        mm_sin = g.args[0].match(a*t + b)
+    if trig_part.func == sin:
+        mm_sin = trig_part.args[0].match(a*t + b)
         trig = "sin"
-    elif g.func == cos:
-        mm_cos = g.args[0].match(a*t + b)
+    elif trig_part.func == cos:
+        mm_cos = trig_part.args[0].match(a*t + b)
         trig = "cos"
     else:
         return None
@@ -1841,13 +2028,15 @@ def _rule_trig_times_step_distribution(f):
 
     aa = simplify(mm[a])
     bb = simplify(mm[b])
+    cc = simplify(step_shift)
+    shifted_phase = simplify(aa*cc + bb)
 
     # helper: F{e^{j蠅0 t}u(t)} = 蟺未(蠅-蠅0) - j PV(1/(蠅-蠅0))
     def _Ushift(w0):
         return pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
 
     if trig == "sin":
-        X = simplify((exp(I*bb)*_Ushift(aa) - exp(-I*bb)*_Ushift(-aa)) / (2*I))
+        X = simplify((exp(I*shifted_phase)*_Ushift(aa) - exp(-I*shifted_phase)*_Ushift(-aa)) / (2*I))
         steps = [
             r"\textbf{Method: Distribution rule (trig 脳 step)}",
             r"x(t)=\sin\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
@@ -1857,7 +2046,7 @@ def _rule_trig_times_step_distribution(f):
             r"X(\omega)=" + latex(X),
             ]
     else:
-        X = simplify((exp(I*bb)*_Ushift(aa) + exp(-I*bb)*_Ushift(-aa)) / 2)
+        X = simplify((exp(I*shifted_phase)*_Ushift(aa) + exp(-I*shifted_phase)*_Ushift(-aa)) / 2)
         steps = [
             r"\textbf{Method: Distribution rule (trig 脳 step)}",
             r"x(t)=\cos\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
@@ -1867,24 +2056,40 @@ def _rule_trig_times_step_distribution(f):
             r"X(\omega)=" + latex(X),
             ]
 
+    X = simplify(coeff * exp(-I*omega*cc) * X)
+
     trig_display = r"\sin" if trig == "sin" else r"\cos"
     euler_identity = (
         r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}"
         if trig == "sin"
         else r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}"
     )
+    if coeff == 1:
+        coeff_latex = ""
+    elif coeff == -1:
+        coeff_latex = "-"
+    else:
+        coeff_latex = latex(coeff)
     steps = _step_start_definition(f)
     steps += [
-        r"\textbf{Step 2: Identify a sinusoid multiplied by the unit step}",
-        r"x(t)=" + trig_display + r"\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
-        r"\text{Here }a=" + latex(aa) + r",\quad b=" + latex(bb) + r",\quad \omega_0=\pm " + latex(aa),
-        r"\textbf{Step 3: Rewrite the sinusoid with Euler's identity}",
+        r"\textbf{Step 2: Identify a sinusoid multiplied by a shifted unit step}",
+        r"x(t)=" + coeff_latex + trig_display + r"\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t-c)",
+        r"\text{Here }a=" + latex(aa) + r",\quad b=" + latex(bb) + r",\quad c=" + latex(cc),
+        r"\textbf{Step 3: Move the step edge to the origin}",
+        r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)",
+        trig_display + r"\!\left(a t+b\right)=" + trig_display + r"\!\left(a s+(a c+b)\right)",
+        r"\text{For this input, }a c+b=" + latex(shifted_phase),
+        r"\textbf{Step 4: Rewrite the sinusoid with Euler's identity}",
         euler_identity,
-        r"\textbf{Step 4: Use the modulated unit-step transform}",
+        r"\textbf{Step 5: Use the modulated unit-step transform}",
         r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
         r"\text{PV appears because each modulated step remains one-sided and not absolutely integrable.}",
-        r"\textbf{Step 5: Combine the }+\omega_0\text{ and }-\omega_0\text{ terms by linearity}",
+        r"\textbf{Step 6: Apply the time-shift property}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+        r"\textbf{Step 7: Combine the }+\omega_0\text{ and }-\omega_0\text{ terms by linearity}",
     ]
+    if coeff != 1:
+        steps.append(r"\text{Apply the constant factor }" + latex(coeff) + r"\text{ by linearity.}")
     steps += _step_final_result(X)
     return ("distribution_form", True, X, steps, "", None)
 
