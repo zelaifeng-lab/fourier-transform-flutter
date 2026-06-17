@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+
+import '../responsive.dart';
+import '../scrollable_content.dart';
 
 class StepPage extends StatefulWidget {
   final List<double> t;
@@ -78,7 +80,10 @@ class _StepPageState extends State<StepPage> {
     final wMin = -_omegaMax;
     final wMax = _omegaMax;
 
-    final omega = List<double>.generate(m, (i) => wMin + (wMax - wMin) * i / (m - 1));
+    final omega = List<double>.generate(
+      m,
+      (i) => wMin + (wMax - wMin) * i / (m - 1),
+    );
     final re = List<double>.filled(m, 0);
     final im = List<double>.filled(m, 0);
     final mag = List<double>.filled(m, 0);
@@ -174,12 +179,11 @@ class _StepPageState extends State<StepPage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: ResponsiveScrollView(
         children: [
           _Card(
-            title: Math.tex(
-              r'\text{Set }\omega\ \text{(rad/s)}',
+            title: ScrollableMathLine(
+              latex: r'\text{Set }\omega\ \text{(rad/s)}',
               textStyle: Theme.of(context).textTheme.titleMedium,
             ),
             child: Column(
@@ -190,7 +194,10 @@ class _StepPageState extends State<StepPage> {
                     Expanded(
                       child: TextField(
                         controller: _omegaCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'ω',
                           hintText: 'Enter ω (rad/s)',
@@ -208,33 +215,37 @@ class _StepPageState extends State<StepPage> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Math.tex(r'\omega = ' + _omega.toStringAsPrecision(8)),
+                ScrollableMathLine(
+                  latex: r'\omega = ' + _omega.toStringAsPrecision(8),
+                ),
                 Slider(
                   min: -_omegaMax,
                   max: _omegaMax,
                   value: _omega.clamp(-_omegaMax, _omegaMax),
                   onChanged: (v) => _setOmega(v),
                 ),
-                Math.tex(
-                  r'\text{Nyquist range: }\omega\in['
-                  '${(-_omegaMax).toStringAsPrecision(4)}, '
+                ScrollableMathLine(
+                  latex:
+                      r'\text{Nyquist range: }\omega\in['
+                      '${(-_omegaMax).toStringAsPrecision(4)}, '
                       '${_omegaMax.toStringAsPrecision(4)}]',
                   textStyle: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 10),
-                Math.tex(
-                  r'X(\omega)\approx '
-                      + Xre.toStringAsPrecision(6)
-                      + r' + j\,'
-                      + Xim.toStringAsPrecision(6)
-                      + r',\quad '
-                  r'\mathrm{Re}\{X\}='
-                      + Xre.toStringAsPrecision(6)
-                      + r',\ '
-                  r'\mathrm{Im}\{X\}='
-                      + Xim.toStringAsPrecision(6)
-                      + r',\ |X|='
-                      + Xmag.toStringAsPrecision(6),
+                ScrollableMathLine(
+                  latex:
+                      r'X(\omega)\approx ' +
+                      Xre.toStringAsPrecision(6) +
+                      r' + j\,' +
+                      Xim.toStringAsPrecision(6) +
+                      r',\quad '
+                          r'\mathrm{Re}\{X\}=' +
+                      Xre.toStringAsPrecision(6) +
+                      r',\ '
+                          r'\mathrm{Im}\{X\}=' +
+                      Xim.toStringAsPrecision(6) +
+                      r',\ |X|=' +
+                      Xmag.toStringAsPrecision(6),
                   textStyle: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -242,17 +253,18 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: Math.tex(r'1)\ \mathrm{Original\ signal}\ \; x(t)'),
+            title: const ScrollableMathLine(
+              latex: r'1)\ \mathrm{Original\ signal}\ \; x(t)',
+            ),
             xTitle: 't',
             yTitle: 'x(t)',
-            series: [
-              _SeriesData(name: 'x(t)', x: t, y: x),
-            ],
+            series: [_SeriesData(name: 'x(t)', x: t, y: x)],
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: Math.tex(
-              r'2)\ \mathrm{Kernel}\ \; e^{-j\omega t}=\cos(\omega t)-j\sin(\omega t)',
+            title: const ScrollableMathLine(
+              latex:
+                  r'2)\ \mathrm{Kernel}\ \; e^{-j\omega t}=\cos(\omega t)-j\sin(\omega t)',
             ),
             xTitle: 't',
             yTitle: 'kernel',
@@ -263,7 +275,9 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: Math.tex(r'3)\ \mathrm{Integrand}\ \; x(t)\cdot e^{-j\omega t}'),
+            title: const ScrollableMathLine(
+              latex: r'3)\ \mathrm{Integrand}\ \; x(t)\cdot e^{-j\omega t}',
+            ),
             xTitle: 't',
             yTitle: 'integrand',
             series: [
@@ -273,9 +287,10 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _ChartCard(
-            title: Math.tex(
-              r'4)\ \mathrm{Running\ integral\ (cumulative)}\ \;'
-              r'\int x(t)e^{-j\omega t}\,dt',
+            title: const ScrollableMathLine(
+              latex:
+                  r'4)\ \mathrm{Running\ integral\ (cumulative)}\ \;'
+                  r'\int x(t)e^{-j\omega t}\,dt',
             ),
             xTitle: 't',
             yTitle: 'X(ω) up to t',
@@ -287,8 +302,9 @@ class _StepPageState extends State<StepPage> {
           ),
           const SizedBox(height: 16),
           _Card(
-            title: Math.tex(
-              r'5)\ \text{Integral result vs }\omega\ \text{(}\omega\text{-axis curve)}',
+            title: ScrollableMathLine(
+              latex:
+                  r'5)\ \text{Integral result vs }\omega\ \text{(}\omega\text{-axis curve)}',
               textStyle: Theme.of(context).textTheme.titleMedium,
             ),
             child: Column(
@@ -302,20 +318,23 @@ class _StepPageState extends State<StepPage> {
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
-                  height: 300,
+                  height: AppBreakpoints.chartHeight(
+                    MediaQuery.sizeOf(context).width,
+                  ),
                   child: _sweepLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _OmegaChart(
-                    omega: _sweepOmega,
-                    re: _sweepRe,
-                    im: _sweepIm,
-                    mag: _sweepMag,
-                  ),
+                          omega: _sweepOmega,
+                          re: _sweepRe,
+                          im: _sweepIm,
+                          mag: _sweepMag,
+                        ),
                 ),
                 const SizedBox(height: 8),
                 // A LaTeX-rendered legend hint (Syncfusion legend itself is plain text).
-                Math.tex(
-                  r'\mathrm{Legend:}\ \mathrm{Re}\{X(\omega)\},\ \mathrm{Im}\{X(\omega)\},\ |X(\omega)|',
+                ScrollableMathLine(
+                  latex:
+                      r'\mathrm{Legend:}\ \mathrm{Re}\{X(\omega)\},\ \mathrm{Im}\{X(\omega)\},\ |X(\omega)|',
                   textStyle: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -344,9 +363,18 @@ class _OmegaChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reData = List<_Pt>.generate(omega.length, (i) => _Pt(omega[i], re[i]));
-    final imData = List<_Pt>.generate(omega.length, (i) => _Pt(omega[i], im[i]));
-    final magData = List<_Pt>.generate(omega.length, (i) => _Pt(omega[i], mag[i]));
+    final reData = List<_Pt>.generate(
+      omega.length,
+      (i) => _Pt(omega[i], re[i]),
+    );
+    final imData = List<_Pt>.generate(
+      omega.length,
+      (i) => _Pt(omega[i], im[i]),
+    );
+    final magData = List<_Pt>.generate(
+      omega.length,
+      (i) => _Pt(omega[i], mag[i]),
+    );
 
     return SfCartesianChart(
       legend: const Legend(isVisible: true, position: LegendPosition.bottom),
@@ -442,9 +470,12 @@ class _ChartCard extends StatelessWidget {
     return _Card(
       title: title,
       child: SizedBox(
-        height: 260,
+        height: AppBreakpoints.chartHeight(MediaQuery.sizeOf(context).width),
         child: SfCartesianChart(
-          legend: const Legend(isVisible: true, position: LegendPosition.bottom),
+          legend: const Legend(
+            isVisible: true,
+            position: LegendPosition.bottom,
+          ),
           primaryXAxis: NumericAxis(title: AxisTitle(text: xTitle)),
           primaryYAxis: NumericAxis(title: AxisTitle(text: yTitle)),
           series: seriesList,

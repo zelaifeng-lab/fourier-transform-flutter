@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 
 import 'fft/fourier_transform_bloc.dart';
 import 'fft/fourier_transform_event.dart';
 import 'fft/fourier_transform_state.dart';
 import 'fft/charts.dart';
+import 'responsive.dart';
+import 'scrollable_content.dart';
 
 void main() {
   runApp(const AppRoot());
@@ -36,43 +37,392 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+class FourierExample {
+  final String expression;
+  final String title;
+  final String category;
+  final String inputLatex;
+  final String transformLatex;
+  final String description;
+
+  const FourierExample({
+    required this.expression,
+    required this.title,
+    required this.category,
+    required this.inputLatex,
+    required this.transformLatex,
+    required this.description,
+  });
+}
+
 class _HomePageState extends State<HomePage> {
   String _expr = 'u(t)';
   int _cursor = 0;
 
   int _pow2 = 9;
   static const double _defaultA = 1.0;
-  /// Example inputs (simple list)
-  static const List<String> _examples = <String>[
-    'u(t)',
-    'delta(t)',
-    'frac(1,t)',
-    'frac(1,t+3)',
-    'frac(1,t^2+1)',
-    'sin(t)',
-    'cos(t)',
-    'exp(I*3*t)',
-    'exp(-t)*u(t)',
-    'sin(t)*u(t)',
-    'cos(t)*u(t)',
-    't*u(t)',
-    'frac(2*t+3,t^2+6)',
-    'frac(2*t,3*t^2+4*t-1)',
-    'sin(3*t+2)/5',
-    'cos(4*t-1)/3',
-    'exp(I*(5*t+2))/4',
-    'sin(2*t)+cos(3*t)',
-    'sin(5*t+1)*u(t)',
-    't^2*u(t)',
-    'u(t-2)-u(t-5)',
-    'delta(t-1)',
-    'cos(4*t-1)/5',
-    'exp(I*(5*t+2))/5',
-    'exp(-2*t)*u(t)',
-    'cos(2*t-3)*u(t)',
-    'frac(1,3*t-2)',
-    'frac(2,t+1)/5',
-    'exp(I*2*t)+exp(-I*2*t)',
+
+  /// Example inputs ordered from basic pairs to property-based cases.
+  static const List<FourierExample> _examples = <FourierExample>[
+    FourierExample(
+      expression: '1',
+      title: 'Constant',
+      category: 'Basic pair',
+      inputLatex: r'1',
+      transformLatex: r'2\pi\delta(\omega)',
+      description: 'Distribution transform of a constant signal.',
+    ),
+    FourierExample(
+      expression: '5',
+      title: 'Scaled constant',
+      category: 'Scale by coefficient',
+      inputLatex: r'5',
+      transformLatex: r'10\pi\delta(\omega)',
+      description: 'Shows linearity for a constant multiplier.',
+    ),
+    FourierExample(
+      expression: 'u(t)',
+      title: 'Unit step',
+      category: 'PV distribution',
+      inputLatex: r'u(t)',
+      transformLatex: r'\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}',
+      description:
+          'Uses the Heaviside transform pair with a principal value term.',
+    ),
+    FourierExample(
+      expression: 'u(t-2)',
+      title: 'Shifted step',
+      category: 'Time shift',
+      inputLatex: r'u(t-2)',
+      transformLatex:
+          r'e^{-j2\omega}\left(\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}\right)',
+      description: 'Demonstrates time shifting of the unit step.',
+    ),
+    FourierExample(
+      expression: 'u(t+1)',
+      title: 'Advanced step',
+      category: 'Time shift',
+      inputLatex: r'u(t+1)',
+      transformLatex:
+          r'e^{j\omega}\left(\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}\right)',
+      description: 'Demonstrates a negative time shift.',
+    ),
+    FourierExample(
+      expression: 'delta(t)',
+      title: 'Impulse',
+      category: 'Basic pair',
+      inputLatex: r'\delta(t)',
+      transformLatex: r'1',
+      description: 'Impulse at the origin transforms to a constant spectrum.',
+    ),
+    FourierExample(
+      expression: 'delta(t-1)',
+      title: 'Shifted impulse',
+      category: 'Time shift',
+      inputLatex: r'\delta(t-1)',
+      transformLatex: r'e^{-j\omega}',
+      description: 'Uses the sifting property and time shift.',
+    ),
+    FourierExample(
+      expression: 'delta(t+2)',
+      title: 'Advanced impulse',
+      category: 'Time shift',
+      inputLatex: r'\delta(t+2)',
+      transformLatex: r'e^{j2\omega}',
+      description: 'Impulse shifted to t=-2.',
+    ),
+    FourierExample(
+      expression: 't',
+      title: 'Linear polynomial',
+      category: 'Polynomial distribution',
+      inputLatex: r't',
+      transformLatex: r'2\pi j\,\delta^{(1)}(\omega)',
+      description: 'Uses frequency differentiation of delta.',
+    ),
+    FourierExample(
+      expression: 't^2',
+      title: 'Quadratic polynomial',
+      category: 'Polynomial distribution',
+      inputLatex: r't^2',
+      transformLatex: r'-2\pi\,\delta^{(2)}(\omega)',
+      description: 'A higher-order delta derivative example.',
+    ),
+    FourierExample(
+      expression: 't^3',
+      title: 'Cubic polynomial',
+      category: 'Polynomial distribution',
+      inputLatex: r't^3',
+      transformLatex: r'-2\pi j\,\delta^{(3)}(\omega)',
+      description: 'Polynomial distribution with third derivative.',
+    ),
+    FourierExample(
+      expression: '3*t',
+      title: 'Scaled polynomial',
+      category: 'Scale by coefficient',
+      inputLatex: r'3t',
+      transformLatex: r'6\pi j\,\delta^{(1)}(\omega)',
+      description: 'Coefficient scaling applied to a polynomial transform.',
+    ),
+    FourierExample(
+      expression: '2*t^2+3*t+1',
+      title: 'Polynomial combination',
+      category: 'Combination',
+      inputLatex: r'2t^2+3t+1',
+      transformLatex: r'2\mathcal{F}\{t^2\}+3\mathcal{F}\{t\}+\mathcal{F}\{1\}',
+      description: 'Uses linearity across polynomial terms.',
+    ),
+    FourierExample(
+      expression: 't*u(t)',
+      title: 'Ramp step',
+      category: 'Polynomial times step',
+      inputLatex: r'tu(t)',
+      transformLatex: r'j\pi\delta^{(1)}(\omega)-\mathrm{PV}\frac{1}{\omega^2}',
+      description: 'Combines polynomial and Heaviside distribution rules.',
+    ),
+    FourierExample(
+      expression: 't^2*u(t)',
+      title: 'Quadratic step',
+      category: 'Polynomial times step',
+      inputLatex: r't^2u(t)',
+      transformLatex:
+          r'-\pi\delta^{(2)}(\omega)+2j\,\mathrm{PV}\frac{1}{\omega^3}',
+      description: 'Higher-order polynomial multiplied by a step.',
+    ),
+    FourierExample(
+      expression: 't^3*u(t)',
+      title: 'Cubic step',
+      category: 'Polynomial times step',
+      inputLatex: r't^3u(t)',
+      transformLatex:
+          r'-j\pi\delta^{(3)}(\omega)+6\,\mathrm{PV}\frac{1}{\omega^4}',
+      description: 'Cubic polynomial step distribution.',
+    ),
+    FourierExample(
+      expression: '2*t*u(t)',
+      title: 'Scaled ramp step',
+      category: 'Scale by coefficient',
+      inputLatex: r'2tu(t)',
+      transformLatex: r'2\mathcal{F}\{tu(t)\}',
+      description: 'Coefficient scaling for a polynomial-step transform.',
+    ),
+    FourierExample(
+      expression: '(t^2+2*t+1)*u(t)',
+      title: 'Polynomial-step combination',
+      category: 'Combination',
+      inputLatex: r'(t^2+2t+1)u(t)',
+      transformLatex:
+          r'\mathcal{F}\{t^2u(t)\}+2\mathcal{F}\{tu(t)\}+\mathcal{F}\{u(t)\}',
+      description: 'Linearity across a polynomial multiplied by a step.',
+    ),
+    FourierExample(
+      expression: 'sin(t)',
+      title: 'Sine',
+      category: 'Trigonometric pair',
+      inputLatex: r'\sin(t)',
+      transformLatex: r'j\pi[\delta(\omega+1)-\delta(\omega-1)]',
+      description: 'Uses Euler expansion into complex exponentials.',
+    ),
+    FourierExample(
+      expression: 'cos(t)',
+      title: 'Cosine',
+      category: 'Trigonometric pair',
+      inputLatex: r'\cos(t)',
+      transformLatex: r'\pi[\delta(\omega-1)+\delta(\omega+1)]',
+      description: 'Symmetric impulse pair in frequency.',
+    ),
+    FourierExample(
+      expression: 'sin(3*t)',
+      title: 'Scaled sine frequency',
+      category: 'Frequency scale',
+      inputLatex: r'\sin(3t)',
+      transformLatex: r'j\pi[\delta(\omega+3)-\delta(\omega-3)]',
+      description:
+          'Shows frequency location controlled by the coefficient of t.',
+    ),
+    FourierExample(
+      expression: 'cos(4*t)',
+      title: 'Scaled cosine frequency',
+      category: 'Frequency scale',
+      inputLatex: r'\cos(4t)',
+      transformLatex: r'\pi[\delta(\omega-4)+\delta(\omega+4)]',
+      description: 'Cosine impulses move to +/-4.',
+    ),
+    FourierExample(
+      expression: 'sin(3*t+2)',
+      title: 'Phase-shifted sine',
+      category: 'Phase shift',
+      inputLatex: r'\sin(3t+2)',
+      transformLatex:
+          r'\frac{\pi}{j}\left(e^{j2}\delta(\omega-3)-e^{-j2}\delta(\omega+3)\right)',
+      description: 'Demonstrates phase factors in a sinusoid transform.',
+    ),
+    FourierExample(
+      expression: 'cos(4*t-1)',
+      title: 'Phase-shifted cosine',
+      category: 'Phase shift',
+      inputLatex: r'\cos(4t-1)',
+      transformLatex:
+          r'\pi\left(e^{-j}\delta(\omega-4)+e^{j}\delta(\omega+4)\right)',
+      description: 'Cosine with phase offset.',
+    ),
+    FourierExample(
+      expression: 'sin(t)+cos(2*t)',
+      title: 'Trig combination',
+      category: 'Combination',
+      inputLatex: r'\sin(t)+\cos(2t)',
+      transformLatex: r'\mathcal{F}\{\sin(t)\}+\mathcal{F}\{\cos(2t)\}',
+      description: 'Shows linearity across two trigonometric pairs.',
+    ),
+    FourierExample(
+      expression: 'sin(t)*u(t)',
+      title: 'One-sided sine',
+      category: 'PV distribution',
+      inputLatex: r'\sin(t)u(t)',
+      transformLatex: r'\frac{1}{2j}\left[U(\omega-1)-U(\omega+1)\right]',
+      description: 'Uses shifted unit-step spectra with PV terms.',
+    ),
+    FourierExample(
+      expression: 'cos(t)*u(t)',
+      title: 'One-sided cosine',
+      category: 'PV distribution',
+      inputLatex: r'\cos(t)u(t)',
+      transformLatex: r'\frac{1}{2}\left[U(\omega-1)+U(\omega+1)\right]',
+      description: 'A one-sided trigonometric signal.',
+    ),
+    FourierExample(
+      expression: 'exp(I*3*t)',
+      title: 'Complex tone',
+      category: 'Modulation',
+      inputLatex: r'e^{j3t}',
+      transformLatex: r'2\pi\delta(\omega-3)',
+      description: 'Pure complex exponential at frequency 3.',
+    ),
+    FourierExample(
+      expression: 'exp(-I*2*t)',
+      title: 'Negative complex tone',
+      category: 'Modulation',
+      inputLatex: r'e^{-j2t}',
+      transformLatex: r'2\pi\delta(\omega+2)',
+      description: 'Pure complex exponential at frequency -2.',
+    ),
+    FourierExample(
+      expression: 'exp(I*(5*t+2))',
+      title: 'Complex tone with phase',
+      category: 'Modulation',
+      inputLatex: r'e^{j(5t+2)}',
+      transformLatex: r'2\pi e^{j2}\delta(\omega-5)',
+      description: 'Frequency shift plus constant phase.',
+    ),
+    FourierExample(
+      expression: 'exp(-t)*u(t)',
+      title: 'Causal exponential',
+      category: 'One-sided exponential',
+      inputLatex: r'e^{-t}u(t)',
+      transformLatex: r'\frac{1}{1+j\omega}',
+      description: 'A common stable causal exponential.',
+    ),
+    FourierExample(
+      expression: 'exp(-2*t)*u(t)',
+      title: 'Faster causal exponential',
+      category: 'One-sided exponential',
+      inputLatex: r'e^{-2t}u(t)',
+      transformLatex: r'\frac{1}{2+j\omega}',
+      description: 'Same transform pair with a different decay rate.',
+    ),
+    FourierExample(
+      expression: 'exp(-3*abs(t))',
+      title: 'Two-sided exponential',
+      category: 'Even integrable signal',
+      inputLatex: r'e^{-3|t|}',
+      transformLatex: r'\frac{6}{\omega^2+9}',
+      description:
+          'A two-sided decaying exponential with ordinary closed form.',
+    ),
+    FourierExample(
+      expression: 'frac(1,t)',
+      title: 'Principal value reciprocal',
+      category: 'PV distribution',
+      inputLatex: r'\frac{1}{t}',
+      transformLatex: r'-j\pi\,\operatorname{sign}(\omega)',
+      description:
+          'This is interpreted as a Cauchy principal value distribution.',
+    ),
+    FourierExample(
+      expression: 'frac(1,t+3)',
+      title: 'Shifted reciprocal',
+      category: 'PV plus time shift',
+      inputLatex: r'\frac{1}{t+3}',
+      transformLatex:
+          r'e^{j3\omega}\left(-j\pi\,\operatorname{sign}(\omega)\right)',
+      description: 'PV reciprocal with a time shift.',
+    ),
+    FourierExample(
+      expression: 'frac(1,3*t-2)',
+      title: 'Scaled reciprocal',
+      category: 'Scale and shift',
+      inputLatex: r'\frac{1}{3t-2}',
+      transformLatex:
+          r'-\frac{j\pi}{3}e^{-j2\omega/3}\operatorname{sign}(\omega)',
+      description: 'Shows matching of a linear denominator a t+b.',
+    ),
+    FourierExample(
+      expression: 'frac(1,t^2+1)',
+      title: 'Lorentzian',
+      category: 'Rational pair',
+      inputLatex: r'\frac{1}{t^2+1}',
+      transformLatex: r'\pi e^{-|\omega|}',
+      description: 'A standard rational transform pair.',
+    ),
+    FourierExample(
+      expression: 'frac(1,t^2+4)',
+      title: 'Scaled Lorentzian',
+      category: 'Scale by denominator',
+      inputLatex: r'\frac{1}{t^2+4}',
+      transformLatex: r'\frac{\pi}{2}e^{-2|\omega|}',
+      description: 'Quadratic denominator with a different pole distance.',
+    ),
+    FourierExample(
+      expression: 'frac(t,t^2+1)',
+      title: 'Odd rational signal',
+      category: 'Rational pair',
+      inputLatex: r'\frac{t}{t^2+1}',
+      transformLatex: r'-j\pi e^{-|\omega|}\operatorname{sign}(\omega)',
+      description: 'Odd rational transform using sign in frequency.',
+    ),
+    FourierExample(
+      expression: 'frac(2*t+3,t^2+6)',
+      title: 'Linear over quadratic',
+      category: 'Generic rational form',
+      inputLatex: r'\frac{2t+3}{t^2+6}',
+      transformLatex: r'\mathcal{F}\left\{\frac{a_1t+a_0}{t^2+c}\right\}',
+      description:
+          'Matches a symbolic rational template before substituting coefficients.',
+    ),
+    FourierExample(
+      expression: 'frac(2*t,3*t^2+4*t-1)',
+      title: 'General quadratic rational',
+      category: 'Generic rational form',
+      inputLatex: r'\frac{2t}{3t^2+4t-1}',
+      transformLatex:
+          r'\mathcal{F}\left\{\frac{a_1t+a_0}{b_2t^2+b_1t+b_0}\right\}',
+      description: 'Uses real-root partial fractions and known PV pairs.',
+    ),
+    FourierExample(
+      expression: 'u(t-2)-u(t-5)',
+      title: 'Finite window',
+      category: 'Window',
+      inputLatex: r'u(t-2)-u(t-5)',
+      transformLatex: r'\frac{e^{-j2\omega}-e^{-j5\omega}}{j\omega}',
+      description: 'A rectangular interval written as two shifted steps.',
+    ),
+    FourierExample(
+      expression: 'u(t+1)-u(t-1)',
+      title: 'Centered window',
+      category: 'Window',
+      inputLatex: r'u(t+1)-u(t-1)',
+      transformLatex: r'\frac{e^{j\omega}-e^{-j\omega}}{j\omega}',
+      description: 'A symmetric finite-duration window.',
+    ),
   ];
 
   int _exampleIndex = 0;
@@ -81,12 +431,12 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     //
-    final idx = _examples.indexOf(_expr);
+    final idx = _examples.indexWhere((example) => example.expression == _expr);
     if (idx >= 0) {
       _exampleIndex = idx;
     } else {
       _exampleIndex = 0;
-      _expr = _examples[0];
+      _expr = _examples[0].expression;
     }
     _cursor = _expr.indexOf('□');
     if (_cursor < 0) _cursor = _expr.length;
@@ -99,13 +449,12 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-
   void _applyExample(int idx) {
     if (_examples.isEmpty) return;
     final i = (idx % _examples.length + _examples.length) % _examples.length;
     setState(() {
       _exampleIndex = i;
-      _expr = _examples[i];
+      _expr = _examples[i].expression;
       final c = _expr.indexOf('□');
       _cursor = (c >= 0) ? c : _expr.length;
     });
@@ -147,6 +496,7 @@ class _HomePageState extends State<HomePage> {
     final numPos = (before + 'frac(').length;
     _setExpr(next, cursor: numPos);
   }
+
   void _insertTPow() {
     final before = _expr.substring(0, _cursor);
     final after = _expr.substring(_cursor);
@@ -164,8 +514,6 @@ class _HomePageState extends State<HomePage> {
     final argPos = (before + 'abs(').length;
     _setExpr(next, cursor: argPos);
   }
-
-
 
   (int start, int comma, int end)? _nearestFrac() {
     final left = _expr.substring(0, _cursor);
@@ -201,6 +549,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentExample = _examples[_exampleIndex];
     return BlocListener<FourierTransformBloc, FourierTransformState>(
       listenWhen: (p, c) => p.status != c.status,
       listener: (context, state) {
@@ -219,41 +568,63 @@ class _HomePageState extends State<HomePage> {
           );
         }
         if (state.status == FourierStatus.failure && state.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.error!)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.error!)));
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Fourier Transform'),),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
+        appBar: AppBar(title: const Text('Fourier Transform')),
+        body: ResponsiveScrollView(
           children: [
             _Section(
               title: 'Expression (preview is the display)',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FormulaPreview(expression: _expr, cursor: _cursor),
-                  const SizedBox(height: 8),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      OutlinedButton(
-                        onPressed: _prevExample,
-                        child: const Text('Previous'),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: _nextExample,
-                        child: const Text('Next'),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          'Example ${_exampleIndex + 1}/${_examples.length}: ${_examples[_exampleIndex]}',
-                          overflow: TextOverflow.ellipsis,
+                        child: _FormulaPreview(
+                          expression: _expr,
+                          cursor: _cursor,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 112,
+                            child: OutlinedButton(
+                              onPressed: _prevExample,
+                              child: const Text('Previous'),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: 112,
+                            child: OutlinedButton(
+                              onPressed: _nextExample,
+                              child: const Text('Next'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Example ${_exampleIndex + 1}/${_examples.length}',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  ScrollableMathLine(
+                    semanticsLabel:
+                        'current-example:${currentExample.expression}',
+                    latex: r'\displaystyle x(t)=' + currentExample.inputLatex,
+                    textStyle: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
                   _Keypad(
@@ -287,7 +658,10 @@ class _HomePageState extends State<HomePage> {
                       onChanged: (v) => setState(() => _pow2 = v.round()),
                     ),
                   ),
-                  SizedBox(width: 96, child: Text('N=${1 << _pow2}', textAlign: TextAlign.end)),
+                  SizedBox(
+                    width: 96,
+                    child: Text('N=${1 << _pow2}', textAlign: TextAlign.end),
+                  ),
                 ],
               ),
             ),
@@ -299,19 +673,19 @@ class _HomePageState extends State<HomePage> {
                   onPressed: running
                       ? null
                       : () {
-                    context.read<FourierTransformBloc>().add(
-                      TransformExpressionRequested(
-                        expression: _expr,
-                        pow2: _pow2,
-                        a: _defaultA,
-                      ),
-                    );
-                  },
+                          context.read<FourierTransformBloc>().add(
+                            TransformExpressionRequested(
+                              expression: _expr,
+                              pow2: _pow2,
+                              a: _defaultA,
+                            ),
+                          );
+                        },
                   icon: running
                       ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.play_arrow),
                   label: Text(running ? 'Running…' : 'Run transform'),
                 );
@@ -320,7 +694,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 8),
             Text(
               '— inserts a fraction skeleton with visible boxes. Active field is highlighted like a formula editor. '
-                  'Singular functions like 1/t^n are stabilized by clamping near t=0 using eps=dt/2.',
+              'Singular functions like 1/t^n are stabilized by clamping near t=0 using eps=dt/2.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -334,10 +708,7 @@ class _FormulaPreview extends StatelessWidget {
   final String expression;
   final int cursor;
 
-  const _FormulaPreview({
-    required this.expression,
-    required this.cursor,
-  });
+  const _FormulaPreview({required this.expression, required this.cursor});
 
   String _latexify(String expr) {
     final c = cursor.clamp(0, expr.length);
@@ -408,7 +779,11 @@ class _FormulaPreview extends StatelessWidget {
               return active ? (r'\boxed{' + inner + '}') : inner;
             }
 
-            final isThisActive = inFrac && localStart == fracStart && i == activeEnd && comma == activeComma;
+            final isThisActive =
+                inFrac &&
+                localStart == fracStart &&
+                i == activeEnd &&
+                comma == activeComma;
             final num = boxify(numRaw, active: isThisActive && activeIsNum);
             final den = boxify(denRaw, active: isThisActive && !activeIsNum);
 
@@ -562,15 +937,15 @@ class _FormulaPreview extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Math.tex(
-                latex,
-                textStyle: Theme.of(context).textTheme.titleLarge,
-              ),
+            ScrollableMathLine(
+              latex: latex,
+              textStyle: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            Text(expression.isEmpty ? '(empty)' : expression, style: Theme.of(context).textTheme.bodySmall),
+            ScrollableTextLine(
+              text: expression.isEmpty ? '(empty)' : expression,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ),
       ),
@@ -652,122 +1027,112 @@ class _Keypad extends StatelessWidget {
     onInsert(seg.isEmpty ? '0.' : '.');
   }
 
-  Widget _btn(String label, {required VoidCallback onTap, bool wide = false}) {
+  Widget _btn(
+    String label, {
+    required VoidCallback onTap,
+    required double width,
+    bool wide = false,
+  }) {
     return SizedBox(
-      width: wide ? 138 : 78,
+      width: wide ? (width * 2 + 8) : width,
       height: 54,
       child: OutlinedButton(
         onPressed: onTap,
-        child: Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('⟵', onTap: onLeft),
-            _btn('⟶', onTap: onRight),
-            _btn('⌫', onTap: onBackspace),
-            _btn('AC', onTap: onClear),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('— (frac)', onTap: onInsertFrac, wide: true),
-            //  _btn('↑', onTap: onJumpNum),
-            //  _btn('↓', onTap: onJumpDen),
-            _btn('•', onTap: () => onInsert('•')),
-            // Imaginary unit (SymPy uses capital I)
-            _btn('i', onTap: () => onInsert('I')),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        final available = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final buttonWidth = ((available - gap * 3) / 4).clamp(64.0, 96.0);
 
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('sin', onTap: () => onInsert('sin(')),
-            _btn('cos', onTap: () => onInsert('cos(')),
-            _btn('exp', onTap: () => onInsert('exp(')),
-            _btn('abs', onTap: onInsertTPow),],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('u(t)', onTap: () => onInsert('u(t)')),
-            _btn('δ(t)', onTap: () => onInsert('delta(t)')),
-            _btn('π', onTap: () => onInsert('pi')),
-            _btn('t', onTap: () => onInsert('t')),
+        Widget row(List<Widget> children) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: gap),
+            child: Wrap(spacing: gap, runSpacing: gap, children: children),
+          );
+        }
 
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        Widget btn(
+          String label, {
+          required VoidCallback onTap,
+          bool wide = false,
+        }) {
+          return _btn(label, onTap: onTap, width: buttonWidth, wide: wide);
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _btn('7', onTap: () => onInsert('7')),
-            _btn('8', onTap: () => onInsert('8')),
-            _btn('9', onTap: () => onInsert('9')),
-            _btn('÷', onTap: () => onInsert('/')),
+            row([
+              btn('⟵', onTap: onLeft),
+              btn('⟶', onTap: onRight),
+              btn('⌫', onTap: onBackspace),
+              btn('AC', onTap: onClear),
+            ]),
+            row([
+              btn('— (frac)', onTap: onInsertFrac, wide: true),
+              btn('•', onTap: () => onInsert('•')),
+              btn('i', onTap: () => onInsert('I')),
+            ]),
+            row([
+              btn('sin', onTap: () => onInsert('sin(')),
+              btn('cos', onTap: () => onInsert('cos(')),
+              btn('exp', onTap: () => onInsert('exp(')),
+              btn('abs', onTap: onInsertTPow),
+            ]),
+            row([
+              btn('u(t)', onTap: () => onInsert('u(t)')),
+              btn('δ(t)', onTap: () => onInsert('delta(t)')),
+              btn('π', onTap: () => onInsert('pi')),
+              btn('t', onTap: () => onInsert('t')),
+            ]),
+            row([
+              btn('7', onTap: () => onInsert('7')),
+              btn('8', onTap: () => onInsert('8')),
+              btn('9', onTap: () => onInsert('9')),
+              btn('÷', onTap: () => onInsert('/')),
+            ]),
+            row([
+              btn('4', onTap: () => onInsert('4')),
+              btn('5', onTap: () => onInsert('5')),
+              btn('6', onTap: () => onInsert('6')),
+              btn('×', onTap: () => onInsert('*')),
+            ]),
+            row([
+              btn('1', onTap: () => onInsert('1')),
+              btn('2', onTap: () => onInsert('2')),
+              btn('3', onTap: () => onInsert('3')),
+              btn('+', onTap: () => onInsert('+')),
+            ]),
+            row([
+              btn('0', onTap: () => onInsert('0')),
+              btn('.', onTap: _dot),
+              btn('-', onTap: () => onInsert('-')),
+              btn('^', onTap: () => onInsert('^')),
+            ]),
+            Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                btn('(', onTap: () => onInsert('(')),
+                btn(')', onTap: () => onInsert(')')),
+                btn(',', onTap: () => onInsert(',')),
+              ],
+            ),
           ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('4', onTap: () => onInsert('4')),
-            _btn('5', onTap: () => onInsert('5')),
-            _btn('6', onTap: () => onInsert('6')),
-            _btn('×', onTap: () => onInsert('*')),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('1', onTap: () => onInsert('1')),
-            _btn('2', onTap: () => onInsert('2')),
-            _btn('3', onTap: () => onInsert('3')),
-            _btn('+', onTap: () => onInsert('+')),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('0', onTap: () => onInsert('0')),
-            _btn('.', onTap: _dot),
-            _btn('-', onTap: () => onInsert('-')),
-            _btn('^', onTap: () => onInsert('^')),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _btn('(', onTap: () => onInsert('(')),
-            _btn(')', onTap: () => onInsert(')')),
-            _btn(',', onTap: () => onInsert(',')),
-          ],
-        ),
-      ],
+        );
+      },
     );
   }
 }

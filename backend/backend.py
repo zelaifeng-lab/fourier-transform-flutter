@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import contextvars
 import uuid
+import re as _regex
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -16,22 +17,22 @@ from sympy.parsing.sympy_parser import (
 )
 
 # ============================================================
-# Fourier Backend (Engineering Convention, ω real)
-#   X(ω) = ∫_{-∞}^{∞} x(t) e^{-j ω t} dt , ω ∈ ℝ
+# Fourier Backend (Engineering Convention, 蠅 real)
+#   X(蠅) = 鈭玙{-鈭瀩^{鈭瀩 x(t) e^{-j 蠅 t} dt , 蠅 鈭?鈩?
 #
 # User conventions:
-#   - Convolution uses '·' (U+00B7) ONLY
+#   - Convolution uses '路' (U+00B7) ONLY
 #   - Multiplication uses '*' (or implicit multiplication)
 #
 # Policy:
-#   - Force ω real (avoid complex-ω arg(...) artifacts)
+#   - Force 蠅 real (avoid complex-蠅 arg(...) artifacts)
 #   - For ANY expression containing trig, first rewrite to complex exponentials.
-#     If it becomes a finite sum of pure tones C_k e^{j ω_k t}, return the
+#     If it becomes a finite sum of pure tones C_k e^{j 蠅_k t}, return the
 #     distribution result via the definition integral:
-#         ∫ e^{-j(ω-ω0)t} dt = 2π δ(ω-ω0)
+#         鈭?e^{-j(蠅-蠅0)t} dt = 2蟺 未(蠅-蠅0)
 #   - Otherwise fall back to property rules + integral fallback.
 # ============================================================
-#(Engineering Convention, ω real)
+#(Engineering Convention, 蠅 real)
 app = FastAPI(title="Fourier Backend ")
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,11 +40,11 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://zelaifeng-lab.github.io",   # 你的 GitHub Pages 域名
+        "https://zelaifeng-lab.github.io",   # 浣犵殑 GitHub Pages 鍩熷悕
     ],
     allow_credentials=True,
-    allow_methods=["*"],   # 允许 POST/OPTIONS 等
-    allow_headers=["*"],   # 允许 Content-Type 等
+    allow_methods=["*"],   # 鍏佽 POST/OPTIONS 绛?
+    allow_headers=["*"],   # 鍏佽 Content-Type 绛?
 )
 
 
@@ -80,16 +81,16 @@ APART_FULL_DEFAULT = False  # always keep real-field partial fractions (avoid Ro
 # ===== Omega-real cleanup (avoid Piecewise/arg/RootSum) =====
 def _omega_real_cleanup(expr):
     """
-    Post-process SymPy outputs assuming ω is real:
-    - replace ω/|ω| with sign(ω)
-    - drop Piecewise branches that only special-case ω=0 (removable after sign rewrite)
+    Post-process SymPy outputs assuming 蠅 is real:
+    - replace 蠅/|蠅| with sign(蠅)
+    - drop Piecewise branches that only special-case 蠅=0 (removable after sign rewrite)
     """
     try:
         expr = expr.subs(omega/Abs(omega), sign(omega))
         expr = expr.subs(-omega/Abs(omega), -sign(omega))
         expr = expr.subs(Abs(omega)/omega, sign(omega))
 
-        # Replace Abs(ω)*ω**(-1) patterns with sign(ω)
+        # Replace Abs(蠅)*蠅**(-1) patterns with sign(蠅)
         def _abs_over_omega_to_sign(e):
             if not isinstance(e, Mul):
                 return e
@@ -201,7 +202,7 @@ def _tb_make_steps(*, recognize_lines, strategy_lines, pair_lines, combine_lines
     steps.extend([s for s in (combine_lines or []) if s])
 
     steps.append(r"\textbf{Final Result}")
-    steps.append(r"X(ω)=" + latex(final_expr))
+    steps.append(r"X(蠅)=" + latex(final_expr))
     return steps
 
 
@@ -355,23 +356,36 @@ def _convert_frac_calls(s: str) -> str:
     return "".join(out)
 
 
+def _normalize_convolution_symbols(s: str) -> str:
+    return (
+        (s or "")
+        .replace(r"\bullet", "\u2022")
+        .replace("\u00b7", "\u2022")
+        .replace("\u2219", "\u2022")
+        .replace("\u22c6", "\u2022")
+        .replace("\u2217", "\u2022")
+    )
+
+
 def _pre_normalize(s: str) -> str:
-    s = (s or "").strip()
-    s = s.replace("（", "(").replace("）", ")")
-    s = s.replace("π", "pi")
-    s = s.replace("ω", "omega")
-    s = s.replace("−", "-")
+    s = _normalize_convolution_symbols(s).strip()
+    s = s.replace("\uff08", "(").replace("\uff09", ")")
+    s = s.replace("\uff0c", ",").replace("\u3001", ",")
+    s = s.replace("\u03c0", "pi")
+    s = s.replace("\u03c9", "omega")
+    s = s.replace("\u2212", "-")
 
     # users often type '^' for power; sympy uses '**'
     s = s.replace("^", "**")
 
     # step/delta aliases
     s = s.replace("u(", "Heaviside(")
-    s = s.replace("θ(", "Heaviside(")
+    s = s.replace("\u03b8(", "Heaviside(")
     s = s.replace("heaviside(", "Heaviside(")
 
-    s = s.replace("δ(", "DiracDelta(")
+    s = s.replace("\u03b4(", "DiracDelta(")
     s = s.replace("delta(", "DiracDelta(")
+    s = s.replace("abs(", "Abs(")
 
     # frac(a,b)
     s = s.replace("rect(", "Rect(")
@@ -417,10 +431,10 @@ def _strip_outer_parens_once(s: str) -> str:
 
 def _split_convolution_top_level(s: str):
     """
-    Convolution is triggered by '·' (U+00B7) or '•' (U+2022) at top level.
+    Convolution is normalized to '?' (U+2022) and split only at top level.
     Multiplication must be written as '*'.
     """
-    s = _strip_outer_parens_once(s)
+    s = _strip_outer_parens_once(_normalize_convolution_symbols(s))
     depth = 0
     for i, ch in enumerate(s):
         if ch == "(":
@@ -429,7 +443,7 @@ def _split_convolution_top_level(s: str):
             depth -= 1
         if depth != 0:
             continue
-        if ch in {"·", "•"}:
+        if ch == "•":
             left = s[:i].strip()
             right = s[i + 1 :].strip()
             if left and right:
@@ -521,12 +535,70 @@ def _match_t_plus_a(den):
     return simplify(b1)
 
 
+def _step_start_definition(f):
+    return [
+        r"\textbf{Step 1: Start from the Fourier transform definition}",
+        r"x(t)=" + _format_step_display_latex(latex(f)),
+        r"X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt",
+    ]
+
+
+def _step_final_result(X):
+    return [
+        r"\textbf{Final Result}",
+        r"X(\omega)=" + latex(X),
+    ]
+
+
+def _format_step_display_latex(text: str) -> str:
+    """Use consistent teaching notation in steps: u(t) for steps and j for engineering convention."""
+    s = text.replace("ω", r"\omega").replace("蠅", r"\omega")
+    s = _regex.sub(r"\\theta\\left\((.*?)\\right\)", r"u(\1)", s)
+    s = s.replace(r"e^{-i", r"e^{-j")
+    s = s.replace(r"e^{i", r"e^{j")
+    s = s.replace(r"e^{{-i", r"e^{{-j")
+    s = s.replace(r"e^{{i", r"e^{{j")
+    s = s.replace(r"-i\pi", r"-j\pi")
+    s = s.replace(r"- i \pi", r"- j \pi")
+    s = s.replace(r" i \pi", r" j \pi")
+    s = s.replace(r"i\omega", r"j\omega")
+    s = s.replace(r"i \omega", r"j \omega")
+    s = s.replace(r"-i", r"-j")
+    return s
+
+
+def _format_result_display_latex(text: str) -> str:
+    """Keep math unchanged while making common distribution notation more readable."""
+    s = text
+    for n in range(1, 10):
+        s = s.replace(
+            rf"\delta^{{\left( {n} \right)}}\left( \omega \right)",
+            rf"\delta^{{({n})}}(\omega)",
+        )
+    s = s.replace(r"\left|{\omega}\right|", r"|\omega|")
+    s = s.replace(r"\operatorname{sign}{\left(\omega \right)}", r"\mathrm{sign}(\omega)")
+    pv_terms = [
+        r"\omega^{2}",
+        r"\omega^{3}",
+        r"\omega^{4}",
+        r"\omega - 1",
+        r"\omega + 1",
+    ]
+    for term in pv_terms:
+        s = s.replace(
+            rf"\operatorname{{PV}}{{\left(\frac{{1}}{{{term}}} \right)}}",
+            rf"\mathrm{{PV}}\frac{{1}}{{{term}}}",
+        )
+    s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
+    return s
+
+
 
 def _try_trig_as_exp_distribution(f):
     """
     Robust trig -> exp -> pure-tone detection.
 
-    Also has a guaranteed path for sin(a*t+b) / cos(a*t+b) to avoid SymPy's arg(ω) Piecewise.
+    Also has a guaranteed path for sin(a*t+b) / cos(a*t+b) to avoid SymPy's arg(蠅) Piecewise.
 
     NOTE: This function is "steps-only refactor": computation is unchanged, only steps text is made
     textbook-like.
@@ -538,33 +610,35 @@ def _try_trig_as_exp_distribution(f):
             a, b = lin  # argument = a*t + b, with a,b independent of t
             if f.func == sin:
                 X = simplify(pi / I * (exp(I*b) * DiracDelta(omega - a) - exp(-I*b) * DiracDelta(omega + a)))
-                steps = [
-                    r"\textbf{Step 1: Identify sinusoidal signal}",
-                    r"x(t)=" + latex(f),
-                    r"\textbf{Step 2: Use Euler identity}",
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Identify the sinusoidal phase}",
+                    r"\theta=a t+b,\quad a=" + latex(a) + r",\quad b=" + latex(b),
+                    r"\textbf{Step 3: Use Euler identity}",
                     r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j},\;\;\theta=a t+b",
-                    r"\textbf{Step 3: Use Fourier transform of complex exponentials}",
+                    r"\textbf{Step 4: Use Fourier transform of complex exponentials}",
                     r"\mathcal{F}\{e^{j\omega_0 t}\}=2\pi\,\delta(\omega-\omega_0)",
-                    r"\textbf{Step 4: Combine delta functions}",
+                    r"\text{Here the two exponential frequencies are }\omega_0=a\text{ and }\omega_0=-a.",
+                    r"\textbf{Step 5: Combine delta functions}",
                     r"X(\omega)=\frac{\pi}{j}\Big(e^{jb}\delta(\omega-a)-e^{-jb}\delta(\omega+a)\Big)",
-                    r"\textbf{Final Result}",
-                    r"X(\omega)=" + latex(X),
                     ]
+                steps += _step_final_result(X)
                 return ("distribution_form", True, X, steps, "", None)
             else:
                 X = simplify(pi * (exp(I*b) * DiracDelta(omega - a) + exp(-I*b) * DiracDelta(omega + a)))
-                steps = [
-                    r"\textbf{Step 1: Identify sinusoidal signal}",
-                    r"x(t)=" + latex(f),
-                    r"\textbf{Step 2: Use Euler identity}",
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Identify the sinusoidal phase}",
+                    r"\theta=a t+b,\quad a=" + latex(a) + r",\quad b=" + latex(b),
+                    r"\textbf{Step 3: Use Euler identity}",
                     r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2},\;\;\theta=a t+b",
-                    r"\textbf{Step 3: Use Fourier transform of complex exponentials}",
+                    r"\textbf{Step 4: Use Fourier transform of complex exponentials}",
                     r"\mathcal{F}\{e^{j\omega_0 t}\}=2\pi\,\delta(\omega-\omega_0)",
-                    r"\textbf{Step 4: Combine delta functions}",
+                    r"\text{Here the two exponential frequencies are }\omega_0=a\text{ and }\omega_0=-a.",
+                    r"\textbf{Step 5: Combine delta functions}",
                     r"X(\omega)=\pi\Big(e^{jb}\delta(\omega-a)+e^{-jb}\delta(\omega+a)\Big)",
-                    r"\textbf{Final Result}",
-                    r"X(\omega)=" + latex(X),
                     ]
+                steps += _step_final_result(X)
                 return ("distribution_form", True, X, steps, "", None)
 
     # General path: rewrite to exp and detect pure tones
@@ -596,7 +670,7 @@ def _try_trig_as_exp_distribution(f):
             return False
 
         if rest == 1:
-            # constant term -> would transform to delta(ω); but keep this function for pure tones only
+            # constant term -> would transform to delta(蠅); but keep this function for pure tones only
             return None
 
         if isinstance(rest, Mul):
@@ -627,16 +701,16 @@ def _try_trig_as_exp_distribution(f):
             coeff = simplify(coeff * exp(I*phi))
         pairs.append((coeff, w))
 
-    # Build X(ω)=∑ 2π Ck δ(ω-wk)
+    # Build X(蠅)=鈭?2蟺 Ck 未(蠅-wk)
     X = 0
     for Ck, wk in pairs:
         X += simplify(2*pi*Ck*DiracDelta(omega - wk))
     X = _omega_real_cleanup(X)
 
     # Textbook-like steps (no internal logs)
-    steps = [
-        r"\textbf{Step 1: Identify sinusoidal signal}",
-        r"x(t)=" + latex(f),
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify sinusoidal signal}",
         r"\textbf{Step 2: Use Euler identity}",
         r"\text{Rewrite }x(t)\text{ as a sum of complex exponentials.}",
         r"\textbf{Step 3: Use Fourier transform of complex exponentials}",
@@ -653,7 +727,7 @@ def _rule_linear_over_t2_plus_c(f):
       (a*t + b)/(t^2 + c), c>0
 
     F{(a t + b)/(t^2 + c)} =
-      π e^{-√c |ω|} ( b/√c - i a sign(ω) )
+      蟺 e^{-鈭歝 |蠅|} ( b/鈭歝 - i a sign(蠅) )
     """
     try:
         num, den = fraction(together(f))
@@ -692,14 +766,18 @@ def _rule_linear_over_t2_plus_c(f):
         c_sqrt = sqrt(c)
         X = pi * exp(-c_sqrt * Abs(omega)) * (b/c_sqrt - I*a*sign(omega))
 
-        steps = [
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Decompose the numerator by linearity}",
+            r"\frac{a t + b}{t^2+c}=a\frac{t}{t^2+c}+b\frac{1}{t^2+c}",
+            r"\textbf{Step 3: Use the two standard rational transform pairs}",
             r"\text{Known pair: }\frac{1}{t^2+c}\;\xleftrightarrow{\mathcal{F}}\;\frac{\pi}{\sqrt{c}}e^{-\sqrt{c}|\omega|},\;c>0",
             r"\text{And }\frac{t}{t^2+c}\;\xleftrightarrow{\mathcal{F}}\;-j\pi\,\mathrm{sign}(\omega)e^{-\sqrt{c}|\omega|}",
-            r"\text{Decompose: }\frac{a t + b}{t^2+c}=a\frac{t}{t^2+c}+b\frac{1}{t^2+c}",
-            r"	ext{Identify parameters: }a=%s,\;b=%s,\;c=%s" % (latex(a), latex(b), latex(c)),
-            r"X(\omega)=" + latex(X),
+            r"\textbf{Step 4: Identify parameters}",
+            r"\text{Here }a=%s,\;b=%s,\;c=%s" % (latex(a), latex(b), latex(c)),
             ]
         X = _omega_real_cleanup(X)
+        steps += _step_final_result(X)
         return ("distribution_form", True, X, steps, "", None)
     except Exception:
         return None
@@ -723,7 +801,7 @@ def _rule_rational_apart_linearity(f):
             # Skip expensive apart only for shapes already covered by dedicated rules:
             #   1/(t+a), 1/(t+a)^2, and (at+b)/(t^2+c) / 1/(t^2+a^2) (monic, no t-term).
             # But for general quadratics with real (possibly irrational) roots, we MUST allow decomposition.
-            if Pd0.degree() == 1:
+            if Pd0.degree() == 1 and Pn0.degree() < Pd0.degree():
                 return None
             if Pd0.degree() == 2:
                 try:
@@ -761,7 +839,7 @@ def _rule_rational_apart_linearity(f):
 
         # partial fractions over reals (keeps irreducible quadratics as needed)
         pf = _apart_cached(f_rem)
-        if pf == f_rem:
+        if pf == f_rem and not f_rem.is_Add:
             # sympy.apart(full=False) may refuse to split when roots are irrational.
             # If the denominator has real roots, do a lightweight residue-based partial fraction.
             pf2 = _apart_real_roots(f_rem)
@@ -822,15 +900,14 @@ def _rule_rational_apart_linearity(f):
                 termwise_steps.append(ss)
 
 
-            termwise_steps.append(r"\Rightarrow\; X_{%d}(ω)=%s" % (k, latex(Xk)))
+            termwise_steps.append(r"\Rightarrow\; X_{%d}(蠅)=%s" % (k, latex(Xk)))
 
 
         X = _omega_real_cleanup(Add(*X_terms, evaluate=False))
 
         # Textbook-like steps
-        steps = [
-            r"\textbf{Step 1: Identify a rational time-domain function}",
-            r"x(t)=" + latex(f),
+        steps = _step_start_definition(f)
+        steps += [
             r"\textbf{Step 2: Apply partial fraction decomposition}",
             ]
         if div_line is not None:
@@ -840,8 +917,7 @@ def _rule_rational_apart_linearity(f):
         steps.extend(termwise_steps)
         steps.append(r"\textbf{Step 4: Combine by linearity}")
         steps.append(r"X(\omega)=\sum_k \mathcal{F}\{t_k\}")
-        steps.append(r"\textbf{Final Result}")
-        steps.append(r"X(\omega)=" + latex(X))
+        steps += _step_final_result(X)
 
         return ("distribution_form", True, X, steps, "", None)
     except Exception:
@@ -869,8 +945,118 @@ def _match_shifted_power(f, n):
                 if lin and lin[0] == 1:
                     return simplify(lin[1])
     return None
+def _match_heaviside_shift(expr):
+    """Return a for Heaviside(t-a), or None if expr is not a unit shifted step."""
+    if getattr(expr, "func", None) != Heaviside or len(expr.args) < 1:
+        return None
+    lin = _as_linear_in_t(expr.args[0])
+    if lin is None:
+        return None
+    a1, b1 = lin
+    if simplify(a1 - 1) != 0:
+        return None
+    return simplify(-b1)
 
 
+def _heaviside_shift_and_coeff(expr):
+    """Return (coeff, a) for coeff*Heaviside(t-a), else None."""
+    shift = _match_heaviside_shift(expr)
+    if shift is not None:
+        return simplify(1), shift
+    if isinstance(expr, Mul):
+        coeff, rest = expr.as_independent(t, as_Add=False)
+        shift = _match_heaviside_shift(rest)
+        if shift is not None:
+            return simplify(coeff), shift
+    return None
+
+
+def _rule_shifted_heaviside_distribution(f):
+    a_shift = _match_heaviside_shift(f)
+    if a_shift is None:
+        return None
+
+    base = pi*DiracDelta(omega) - I*(1/omega)
+    X = base if simplify(a_shift) == 0 else exp(-I*omega*a_shift) * base
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify the signal as a shifted unit step}",
+        r"x(t)=u(t-a),\quad a=" + latex(a_shift),
+        r"\textbf{Step 3: Use the known step transform pair}",
+        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\text{The PV term appears because }u(t)\text{ is not absolutely integrable over }(-\infty,\infty).",
+        r"\textbf{Step 4: Apply the time-shift property}",
+        r"\mathcal{F}\{u(t-a)\}=e^{-j\omega a}\left(\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}\right)",
+        r"\text{Substitute }a=" + latex(a_shift),
+    ]
+    steps += _step_final_result(X)
+    return "distribution_form", True, X, steps, "", None
+
+
+def _rule_finite_step_window(f):
+    if not isinstance(f, Add):
+        return None
+    terms = list(f.args)
+    if len(terms) != 2:
+        return None
+
+    p0 = _heaviside_shift_and_coeff(terms[0])
+    p1 = _heaviside_shift_and_coeff(terms[1])
+    if p0 is None or p1 is None:
+        return None
+
+    c0, s0 = p0
+    c1, s1 = p1
+    if simplify(c0 - 1) == 0 and simplify(c1 + 1) == 0:
+        a, b = s0, s1
+    elif simplify(c1 - 1) == 0 and simplify(c0 + 1) == 0:
+        a, b = s1, s0
+    else:
+        return None
+
+    X = (exp(-I*omega*a) - exp(-I*omega*b)) / (I*omega)
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a finite-duration signal}",
+        r"x(t)=u(t-" + latex(a) + r")-u(t-" + latex(b) + r")",
+        r"\textbf{Step 3: Determine the nonzero interval}",
+        r"x(t)=1\;\;\text{for }t\in[" + latex(a) + "," + latex(b) + r"],\;\;0\text{ otherwise}",
+        r"\textbf{Step 4: Replace the full integral by the interval integral}",
+        r"X(\omega)=\int_{" + latex(a) + r"}^{" + latex(b) + r"}e^{-j\omega t}\,dt",
+        r"\textbf{Step 5: Evaluate the exponential integral}",
+        r"X(\omega)=\frac{e^{-j\omega " + latex(a) + r"}-e^{-j\omega " + latex(b) + r"}}{j\omega}",
+    ]
+    steps += _step_final_result(X)
+    return "distribution_form", True, X, steps, "", None
+
+
+def _rule_abs_exponential(f):
+    if getattr(f, "func", None) != exp or len(f.args) != 1:
+        return None
+
+    coeff, rest = expand(f.args[0]).as_coeff_Mul()
+    if rest != Abs(t):
+        return None
+    if coeff.is_number:
+        if coeff >= 0:
+            return None
+    elif coeff.is_negative is not True:
+        return None
+
+    a_val = simplify(-coeff)
+    X = 2*a_val/(a_val**2 + omega**2)
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify an even two-sided exponential}",
+        r"x(t)=e^{-a|t|},\quad a>0,\quad a=" + latex(a_val),
+        r"\textbf{Step 3: Split the integral at }t=0",
+        r"X(\omega)=\int_{-\infty}^{0}e^{a t}e^{-j\omega t}\,dt+\int_{0}^{\infty}e^{-a t}e^{-j\omega t}\,dt",
+        r"\textbf{Step 4: Use the standard two-sided exponential pair}",
+        r"\mathcal{F}\{e^{-a|t|}\}=\frac{2a}{a^2+\omega^2},\quad a>0",
+        r"\text{Substitute }a=" + latex(a_val),
+    ]
+    steps += _step_final_result(X)
+    return "closed_form", True, X, steps, r"a>0", None
 
 
 # ---------- main derivation ----------
@@ -878,10 +1064,22 @@ def _match_shifted_power(f, n):
 def _derive_with_properties(f):
     """
     Returns: (form, ok, X_expr, steps_latex, conditions_latex, error_or_None)
-    form ∈ {"closed_form","integral_form","distribution_form","divergent"}
+    form 鈭?{"closed_form","integral_form","distribution_form","divergent"}
     """
 
     # 0) Trig-first policy (user request)
+
+    finite_window_res = _rule_finite_step_window(f)
+    if finite_window_res is not None:
+        return finite_window_res
+
+    shifted_step_res = _rule_shifted_heaviside_distribution(f)
+    if shifted_step_res is not None:
+        return shifted_step_res
+
+    abs_exp_res = _rule_abs_exponential(f)
+    if abs_exp_res is not None:
+        return abs_exp_res
 
     poly_step_res = _rule_poly_times_step_distribution(f)
 
@@ -904,7 +1102,7 @@ def _derive_with_properties(f):
     if trig_res is not None:
         return trig_res
 
-    # --- Known pair: 1/(t^2 + c), c>0 (force ω real; avoid half-branch Piecewise) ---
+    # --- Known pair: 1/(t^2 + c), c>0 (force 蠅 real; avoid half-branch Piecewise) ---
     # Covers 1/(t^2+1), 1/(t^2+6), 1/(t^2+a^2) (interpreted as c=a^2).
     try:
         num, den = fraction(together(f))
@@ -919,14 +1117,24 @@ def _derive_with_properties(f):
                     if c_pos or (c.is_Number and float(c) > 0) or (c.is_Pow and c.exp == 2):
                         alpha = simplify(sqrt(c))
                         X = simplify(pi/alpha * exp(-alpha*Abs(omega)))
-                        # Use Unicode ω in steps to avoid flutter_math_fork \omega parser issues.
+                        # Use Unicode 蠅 in steps to avoid flutter_math_fork \omega parser issues.
                         steps = [
-                            r"X(ω)=\int_{-\infty}^{\infty}x(t)\,e^{-iω t}\,dt",
+                            r"X(蠅)=\int_{-\infty}^{\infty}x(t)\,e^{-i蠅 t}\,dt",
                             rf"x(t)=\frac{{1}}{{t^{{2}}+{latex(c)}}}",
-                            rf"\Rightarrow\;X(ω)=\int_{{-\infty}}^{{\infty}}\frac{{e^{{-iω t}}}}{{t^{{2}}+{latex(c)}}}\,dt\;\;({latex(c)}>0)",
-                            rf"X(ω)=\frac{{\pi}}{{{latex(alpha)}}}e^{{-{latex(alpha)}|ω|}}",
+                            rf"\Rightarrow\;X(蠅)=\int_{{-\infty}}^{{\infty}}\frac{{e^{{-i蠅 t}}}}{{t^{{2}}+{latex(c)}}}\,dt\;\;({latex(c)}>0)",
+                            rf"X(蠅)=\frac{{\pi}}{{{latex(alpha)}}}e^{{-{latex(alpha)}|蠅|}}",
                         ]
                         X = _omega_real_cleanup(X)
+                        steps = _step_start_definition(f)
+                        steps += [
+                            r"\textbf{Step 2: Identify a standard rational transform pair}",
+                            rf"x(t)=\frac{{1}}{{t^{{2}}+{latex(c)}}},\quad {latex(c)}>0",
+                            r"\textbf{Step 3: Rewrite the denominator as }t^2+\alpha^2",
+                            rf"\alpha=\sqrt{{{latex(c)}}}={latex(alpha)}",
+                            r"\textbf{Step 4: Use the known transform pair}",
+                            r"\mathcal{F}\left\{\frac{1}{t^2+\alpha^2}\right\}=\frac{\pi}{\alpha}e^{-\alpha|\omega|},\quad \alpha>0",
+                        ]
+                        steps += _step_final_result(X)
                         return "distribution_form", True, X, steps, "", None
     except Exception:
         pass
@@ -942,14 +1150,16 @@ def _derive_with_properties(f):
 
 
     # 0.5) Constant (distribution)
-    # x(t)=C  -> X(ω)=2π C δ(ω)
+    # x(t)=C  -> X(蠅)=2蟺 C 未(蠅)
     if f.free_symbols.isdisjoint({t}):
         X = simplify(2*pi*f*DiracDelta(omega))
-        steps = [
-            r"x(t)=" + latex(f),
-            r"X(\omega)=\int_{-\infty}^{\infty}C\,e^{-j\omega t}dt=2\pi C\,\delta(\omega)\quad(\text{distribution})",
-            r"X(\omega)=" + latex(X),
-            ]
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Use the constant transform pair}",
+            r"\mathcal{F}\{C\}=2\pi C\,\delta(\omega)",
+            r"\text{A constant signal is not absolutely integrable, so the result is interpreted as a distribution.}",
+        ]
+        steps += _step_final_result(X)
         return "distribution_form", True, X, steps, "", None
 
     # 0.6) DiracDelta(t-a) shift
@@ -962,23 +1172,27 @@ def _derive_with_properties(f):
             if a == 1:
                 t0 = -b
                 X = simplify(exp(-I*omega*t0))
-                steps = [
-                    r"x(t)=\delta(t-t_0)",
-                    r"X(\omega)=\int \delta(t-t_0)e^{-j\omega t}dt=e^{-j\omega t_0}",
-                    r"t_0=" + latex(t0),
-                    r"X(\omega)=" + latex(X),
-                    ]
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Identify the impulse location}",
+                    r"\delta(t-t_0),\quad t_0=" + latex(t0),
+                    r"\textbf{Step 3: Use the sifting property of the delta function}",
+                    r"X(\omega)=\int_{-\infty}^{\infty}\delta(t-t_0)e^{-j\omega t}\,dt=e^{-j\omega t_0}",
+                ]
+                steps += _step_final_result(X)
                 return "distribution_form", True, X, steps, "", None
             if a == -1:
-                # δ(-t + b) = δ(t-b)
+                # 未(-t + b) = 未(t-b)
                 t0 = b
                 X = simplify(exp(-I*omega*t0))
-                steps = [
-                    r"x(t)=\delta(-t+t_0)=\delta(t-t_0)",
-                    r"X(\omega)=e^{-j\omega t_0}",
-                    r"t_0=" + latex(t0),
-                    r"X(\omega)=" + latex(X),
-                    ]
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Use delta symmetry to identify the impulse location}",
+                    r"\delta(-t+t_0)=\delta(t-t_0),\quad t_0=" + latex(t0),
+                    r"\textbf{Step 3: Apply the impulse transform pair}",
+                    r"\mathcal{F}\{\delta(t-t_0)\}=e^{-j\omega t_0}",
+                ]
+                steps += _step_final_result(X)
                 return "distribution_form", True, X, steps, "", None
 
     # 0.7) Heaviside(t) and Heaviside(t-a) (distribution)
@@ -995,7 +1209,7 @@ def _derive_with_properties(f):
         if a_shift is not None:
             base = simplify(pi*DiracDelta(omega) - I*(1/omega))
             # Use PV via sign rule? We'll keep PV as 1/omega with distribution note.
-            # More standard: πδ(ω) - j PV(1/ω). Here we show as πδ(ω) - i*PV(1/ω).
+            # More standard: 蟺未(蠅) - j PV(1/蠅). Here we show as 蟺未(蠅) - i*PV(1/蠅).
             X = simplify(pi*DiracDelta(omega) - I*sign(omega)*0)  # placeholder to keep simplify stable
             X = pi*DiracDelta(omega) - I* (1/omega)
             steps = [
@@ -1018,14 +1232,20 @@ def _derive_with_properties(f):
             lin = _as_linear_in_t(g.args[0])
             if lin is not None:
                 acoef, b = lin  # exponent = acoef*t + b
-                # x(t)=e^{a t + b}u(t) -> e^{b} /(jω - a)
+                # x(t)=e^{a t + b}u(t) -> e^{b} /(j蠅 - a)
                 X = simplify(exp(b) / (I*omega - acoef))
                 cond = r"\Re(a)<0" if acoef.free_symbols else ("" )
-                steps = [
-                    r"x(t)=e^{a t}u(t)",
-                    r"X(\omega)=\int_0^{\infty}e^{(a-j\omega)t}dt=\frac{1}{j\omega-a}\quad(\Re(a)<0)",
-                    r"X(\omega)=" + latex(X),
-                    ]
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Use the unit step to set the integration range}",
+                    r"\text{Write }x(t)=e^{a t+b}u(t),\quad a=" + latex(acoef) + r",\quad b=" + latex(b),
+                    r"X(\omega)=\int_{0}^{\infty}e^{a t+b}e^{-j\omega t}\,dt",
+                    r"\textbf{Step 3: Combine exponential terms}",
+                    r"X(\omega)=e^b\int_{0}^{\infty}e^{(a-j\omega)t}\,dt,\quad \Re(a)<0",
+                    r"\textbf{Step 4: Evaluate the convergent one-sided exponential integral}",
+                    r"X(\omega)=\frac{e^b}{j\omega-a}",
+                ]
+                steps += _step_final_result(X)
                 return "closed_form", True, X, steps, (r"\text{Requires }\Re(a)<0" if cond else ""), None
 
     # 0.9) exp(-a*Abs(t)) (common integrable)
@@ -1044,7 +1264,7 @@ def _derive_with_properties(f):
                 ]
             return "closed_form", True, X, steps, r"a>0", None
 
-    # 0.10) Pure tone exp(I*ω0*t + I*φ)
+    # 0.10) Pure tone exp(I*蠅0*t + I*蠁)
     if f.func == exp and len(f.args)==1:
         inside = simplify(f.args[0]/I)
         if not inside.has(I):
@@ -1052,14 +1272,19 @@ def _derive_with_properties(f):
             if lin is not None:
                 w0, phi = lin
                 X = simplify(2*pi*exp(I*phi)*DiracDelta(omega - w0))
-                steps = [
-                    r"x(t)=e^{j(\omega_0 t+\phi)}",
-                    r"X(\omega)=\int e^{-j(\omega-\omega_0)t}dt\,e^{j\phi}=2\pi e^{j\phi}\delta(\omega-\omega_0)",
-                    r"X(\omega)=" + latex(X),
-                    ]
+                steps = _step_start_definition(f)
+                steps += [
+                    r"\textbf{Step 2: Separate the constant phase and the pure tone}",
+                    r"x(t)=e^{j\phi}e^{j\omega_0 t},\quad \omega_0=" + latex(w0) + r",\quad \phi=" + latex(phi),
+                    r"\textbf{Step 3: Use the pure-tone transform pair}",
+                    r"\mathcal{F}\{e^{j\omega_0 t}\}=2\pi\delta(\omega-\omega_0)",
+                    r"\textbf{Step 4: Apply the phase constant by linearity}",
+                    r"X(\omega)=2\pi e^{j\phi}\delta(\omega-\omega_0)",
+                ]
+                steps += _step_final_result(X)
                 return "distribution_form", True, X, steps, "", None
 
-    # 0.11) t^n * exp(I*ω0*t) (frequency differentiation)
+    # 0.11) t^n * exp(I*蠅0*t) (frequency differentiation)
     if isinstance(f, Mul):
         # look for exp(I*w0*t) factor and t**n
         exp_factor = None
@@ -1098,16 +1323,17 @@ def _derive_with_properties(f):
     # 1) DiracDelta basics
     if f == DiracDelta(t):
         X = 1
-        steps = [
-            r"x(t)=\delta(t)",
-            r"X(\omega)=\int_{-\infty}^{\infty}\delta(t)e^{-j\omega t}dt=e^{-j\omega\cdot 0}=1",
-            r"X(\omega)=1",
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Apply the sifting property}",
+            r"X(\omega)=\int_{-\infty}^{\infty}\delta(t)e^{-j\omega t}\,dt=e^{-j\omega\cdot 0}=1",
         ]
+        steps += _step_final_result(X)
         return "distribution_form", True, X, steps, "", None
 
 
     # 2) PV rational distributions: 1/(t+a), 1/(t+a)^2
-    # Allow an overall constant factor c: F{c*g(t)} = c*G(ω)
+    # Allow an overall constant factor c: F{c*g(t)} = c*G(蠅)
     c0 = 1
     f0 = f
     if isinstance(f, Mul):
@@ -1229,9 +1455,9 @@ def _derive_with_properties(f):
                 r"\textbf{Step 2: Determine the nonzero interval}",
                 r"x(t)=1\;\;\text{for }t\in[" + latex(a) + "," + latex(b) + r"],\;\;0\text{ otherwise}",
                 r"\textbf{Step 3: Write the Fourier transform integral}",
-                r"X(ω)=\int_{" + latex(a) + r"}^{" + latex(b) + r"} e^{-iω t}\,dt",
+                r"X(蠅)=\int_{" + latex(a) + r"}^{" + latex(b) + r"} e^{-i蠅 t}\,dt",
                 r"\textbf{Step 4: Evaluate the integral}",
-                r"X(ω)=\frac{e^{-iω " + latex(a) + r"}-e^{-iω " + latex(b) + r"}}{iω}\quad(\text{with distributional interpretation at }ω=0)",
+                r"X(蠅)=\frac{e^{-i蠅 " + latex(a) + r"}-e^{-i蠅 " + latex(b) + r"}}{i蠅}\quad(\text{with distributional interpretation at }蠅=0)",
                 r"\textbf{Final Result}",
                 r"X(\omega)=" + latex(X_sum),
                 ]
@@ -1296,6 +1522,37 @@ class FourierResponse(BaseModel):
     conditions_latex: str | None = None
 
 
+def _teaching_steps(f, X, steps):
+    """Normalize derivation steps for user-facing teaching output."""
+    cleaned = []
+    for raw in steps or []:
+        if raw is None:
+            continue
+        s = str(raw).strip()
+        if not s:
+            continue
+        s = _format_step_display_latex(s)
+        if s.startswith(r"X(\omega)="):
+            s = r"X(\omega)=" + _format_result_display_latex(s[len(r"X(\omega)="):])
+        if "Method:" in s or "_rule_" in s or "matcher" in s or "debug" in s or "srepr" in s:
+            continue
+        if r"\begin{cases}" in s or "Piecewise" in s or "RootSum" in s or "polar_lift" in s or "meijerg" in s:
+            continue
+        cleaned.append(s)
+
+    joined = "\n".join(cleaned)
+    if r"X(\omega)=\int" not in joined:
+        cleaned = _step_start_definition(f) + cleaned
+
+    if not cleaned or "Final Result" not in "\n".join(cleaned):
+        result_text = _format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X)))
+        cleaned += [
+            r"\textbf{Final Result}",
+            r"X(\omega)=" + result_text,
+        ]
+    return cleaned
+
+
 @app.post("/fourier", response_model=FourierResponse)
 def fourier(req: FourierRequest):
     raw = (req.expression or "").strip()
@@ -1313,7 +1570,7 @@ def fourier(req: FourierRequest):
 
         )
 
-    # Convolution: only '·'
+    # Convolution: only '路'
     conv = _split_convolution_top_level(raw)
     if conv is not None:
         left_s, right_s = conv
@@ -1358,12 +1615,12 @@ def fourier(req: FourierRequest):
             build_id=BUILD_ID,
             ok=True,
             input_latex=latex(f) + r"\cdot " + latex(g),
-            result_latex=(_format_pv_reciprocal_result_latex(f) or latex(X)),
+            result_latex=_format_result_display_latex(latex(X)),
             steps_latex=steps,
             error=None,
             form="closed_form" if (okF and okG) else "integral_form",
             conditions_latex="",
-            method="unknown",
+            method="convolution_rule",
 
         )
 
@@ -1405,6 +1662,8 @@ def fourier(req: FourierRequest):
             method = "direct_integral"
 
 
+    steps = _teaching_steps(f, X, steps)
+
     legacy_ok = (form in {"closed_form", "distribution_form"})
 
 
@@ -1412,7 +1671,7 @@ def fourier(req: FourierRequest):
         build_id=BUILD_ID,
         ok=legacy_ok,
         input_latex=latex(f),
-        result_latex=(_format_pv_reciprocal_result_latex(f) or latex(X)),
+        result_latex=_format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(X)),
         steps_latex=steps,
         error=err,
         form=form,
@@ -1449,7 +1708,7 @@ def _rule_modulated_step(f):
 
 
 def _rule_bspline2(f):
-    if str(f).replace(" ","") in ["Heaviside(t)•Heaviside(t)","Heaviside(t).Heaviside(t)"]:
+    if str(f).replace(" ","") in ["Heaviside(t)鈥eaviside(t)","Heaviside(t).Heaviside(t)"]:
         return _rule_shifted_poly_u_explicit(t*Heaviside(t))
     return None
 
@@ -1475,35 +1734,70 @@ def _rule_damped_oscillation(f):
 def _rule_poly_times_step_distribution(f):
     """
     Explicit distribution for t^n * Heaviside(t):
-      F{t^n u(t)} = π j^n δ^{(n)}(ω) + (-1)^n j^{n-1} n! PV(1/ω^{n+1})
+      F{t^n u(t)} = 蟺 j^n 未^{(n)}(蠅) + (-1)^n j^{n-1} n! PV(1/蠅^{n+1})
     """
-    if not (isinstance(f, Mul) and f.has(Heaviside(t))):
-        return None
-    # exact factor Heaviside(t) must be present
-    if Heaviside(t) not in f.args:
-        return None
-    g = simplify(f / Heaviside(t))
-    if g == 1:
-        n = 0
-    elif g == t:
-        n = 1
-    elif g.is_Pow and g.base == t and g.exp.is_Integer and int(g.exp) >= 0:
-        n = int(g.exp)
-    else:
+    if not (isinstance(f, Mul) and f.has(Heaviside)):
         return None
 
-    X = simplify(
-        pi*(I**n)*Derivative(DiracDelta(omega), (omega, n))
-        + ((-1)**n)*(I**(n-1))*factorial(n)*PV(1/(omega**(n+1)))
-    )
+    h_t = None
+    for h in f.atoms(Heaviside):
+        if len(h.args) >= 1 and simplify(h.args[0] - t) == 0:
+            h_t = h
+            break
+    if h_t is None:
+        return None
+
+    g = expand(simplify(f / h_t))
+    if not g.is_polynomial(t):
+        return None
+
+    try:
+        poly = Poly(g, t)
+    except Exception:
+        return None
+
+    def _basis(n):
+        if n == 0:
+            return pi*DiracDelta(omega) - I*(1/omega)
+        return (
+            pi*(I**n)*Derivative(DiracDelta(omega), (omega, n))
+            + ((-1)**n)*(I**(n-1))*factorial(n)*PV(1/(omega**(n+1)))
+        )
+
+    pieces = []
+    degree_values = []
+    for (degree,), coeff in poly.terms():
+        if degree < 0:
+            return None
+        degree_int = int(degree)
+        degree_values.append(degree_int)
+        pieces.append(simplify(coeff * _basis(degree_int)))
+    if not pieces:
+        return None
+
+    X = Add(*pieces, evaluate=False)
     steps = [
-        r"\textbf{Method: Distribution rule (polynomial × step)}",
-        r"x(t)=t^{" + str(n) + r"}u(t),\;u(t)=\mathrm{Heaviside}(t)",
+        r"\textbf{Method: Distribution rule (polynomial 脳 step)}",
+        r"x(t)=p(t)u(t),\;p(t)=" + latex(g),
         r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
-        r"\mathcal{F}\{t^n x(t)\}=j^n\frac{d^n}{d\omega^n}X(\omega)",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\text{Apply polynomial linearity term by term}",
         r"\Rightarrow X(\omega)=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
         r"X(\omega)=" + latex(X),
         ]
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a polynomial multiplied by the unit step}",
+        r"x(t)=p(t)u(t),\quad p(t)=" + latex(g),
+        r"\text{For this input, use }n\in\{" + ",".join(str(n) for n in degree_values) + r"\}\text{ term by term.}",
+        r"\textbf{Step 3: Start from the unit-step transform pair}",
+        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\text{The PV term appears because }u(t)\text{ is one-sided and not absolutely integrable.}",
+        r"\textbf{Step 4: Use frequency differentiation}",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\textbf{Step 5: Apply polynomial linearity term by term}",
+    ]
+    steps += _step_final_result(X)
     return ("distribution_form", True, X, steps, "", None)
 
 
@@ -1548,14 +1842,14 @@ def _rule_trig_times_step_distribution(f):
     aa = simplify(mm[a])
     bb = simplify(mm[b])
 
-    # helper: F{e^{jω0 t}u(t)} = πδ(ω-ω0) - j PV(1/(ω-ω0))
+    # helper: F{e^{j蠅0 t}u(t)} = 蟺未(蠅-蠅0) - j PV(1/(蠅-蠅0))
     def _Ushift(w0):
         return pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
 
     if trig == "sin":
         X = simplify((exp(I*bb)*_Ushift(aa) - exp(-I*bb)*_Ushift(-aa)) / (2*I))
         steps = [
-            r"\textbf{Method: Distribution rule (trig × step)}",
+            r"\textbf{Method: Distribution rule (trig 脳 step)}",
             r"x(t)=\sin\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
             r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}",
             r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
@@ -1565,7 +1859,7 @@ def _rule_trig_times_step_distribution(f):
     else:
         X = simplify((exp(I*bb)*_Ushift(aa) + exp(-I*bb)*_Ushift(-aa)) / 2)
         steps = [
-            r"\textbf{Method: Distribution rule (trig × step)}",
+            r"\textbf{Method: Distribution rule (trig 脳 step)}",
             r"x(t)=\cos\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
             r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}",
             r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
@@ -1573,6 +1867,25 @@ def _rule_trig_times_step_distribution(f):
             r"X(\omega)=" + latex(X),
             ]
 
+    trig_display = r"\sin" if trig == "sin" else r"\cos"
+    euler_identity = (
+        r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}"
+        if trig == "sin"
+        else r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}"
+    )
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a sinusoid multiplied by the unit step}",
+        r"x(t)=" + trig_display + r"\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
+        r"\text{Here }a=" + latex(aa) + r",\quad b=" + latex(bb) + r",\quad \omega_0=\pm " + latex(aa),
+        r"\textbf{Step 3: Rewrite the sinusoid with Euler's identity}",
+        euler_identity,
+        r"\textbf{Step 4: Use the modulated unit-step transform}",
+        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+        r"\text{PV appears because each modulated step remains one-sided and not absolutely integrable.}",
+        r"\textbf{Step 5: Combine the }+\omega_0\text{ and }-\omega_0\text{ terms by linearity}",
+    ]
+    steps += _step_final_result(X)
     return ("distribution_form", True, X, steps, "", None)
 
 
@@ -1581,11 +1894,9 @@ def _rule_trig_times_step_distribution(f):
 def _rule_poly_distribution(f):
     """
     Distribution for pure polynomials t^n (no step):
-      F{t^n} = 2π i^n δ^{(n)}(ω)
+      F{t^n} = 2蟺 i^n 未^{(n)}(蠅)
     """
-    if f == 1:
-        n = 0
-    elif f == t:
+    if f == t:
         n = 1
     elif f.is_Pow and f.base == t and f.exp.is_Integer and int(f.exp) >= 0:
         n = int(f.exp)
@@ -1593,14 +1904,18 @@ def _rule_poly_distribution(f):
         return None
 
     X = simplify(2*pi*(I**n)*Derivative(DiracDelta(omega), (omega, n)))
-    steps = [
-        r"\textbf{Method: Distribution rule (polynomial)}",
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify the polynomial degree}",
         r"x(t)=t^{" + str(n) + r"}",
+        r"\text{Here }n=" + str(n),
+        r"\textbf{Step 3: Start from the constant transform pair}",
         r"\mathcal{F}\{1\}=2\pi\delta(\omega)",
+        r"\textbf{Step 4: Use frequency differentiation}",
         r"\mathcal{F}\{t^n x(t)\}=j^n\frac{d^n}{d\omega^n}X(\omega)",
         r"\Rightarrow X(\omega)=2\pi j^n\delta^{(n)}(\omega)",
-        r"X(\omega)=" + latex(X),
         ]
+    steps += _step_final_result(X)
     return ("distribution_form", True, X, steps, "", None)
 
 
@@ -1631,6 +1946,19 @@ def _rule_pv_reciprocal(f):
                 r"X(\omega)=" + latex(X),
                 ]
             X = _omega_real_cleanup(X)
+            steps = _step_start_definition(f)
+            steps += [
+                r"\textbf{Step 2: Interpret the reciprocal as a principal-value distribution}",
+                r"\mathrm{PV}\!\int_{-\infty}^{\infty}\frac{e^{-j\omega t}}{t}\,dt=-j\pi\,\mathrm{sign}(\omega)",
+                r"\text{PV means the singularity at }t=0\text{ is handled by symmetric limiting.}",
+                r"\textbf{Step 3: Apply the time-shift property}",
+                r"\mathcal{F}\left\{\mathrm{PV}\frac{1}{t+a}\right\}=e^{j\omega a}\left(-j\pi\,\mathrm{sign}(\omega)\right)",
+                r"\text{Substitute }a=" + latex(a0),
+            ]
+            steps += [
+                r"\textbf{Final Result}",
+                r"X(\omega)=" + (_format_pv_reciprocal_result_latex(f) or latex(X)),
+            ]
 
             return ("distribution_form", True, X, steps, "", None)
 
@@ -1653,6 +1981,21 @@ def _rule_pv_reciprocal(f):
             r"\text{Substitute }a=%s,\;b=%s\;\Rightarrow\;\frac{b}{a}=%s\;\Rightarrow\;X(\omega)=%s" % (latex(a), latex(b), latex(shift), (_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X)))),
             r"X(\omega)=" + latex(X),
             ]
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Interpret the reciprocal as a principal-value distribution}",
+            r"\mathrm{PV}\!\int_{-\infty}^{\infty}\frac{e^{-j\omega t}}{t}\,dt=-j\pi\,\mathrm{sign}(\omega)",
+            r"\text{PV means the singularity is handled by symmetric limiting around the pole.}",
+            r"\textbf{Step 3: Rewrite the denominator into shifted form}",
+            r"\frac{1}{a t+b}=\frac{1}{a}\,\frac{1}{t+\frac{b}{a}}",
+            r"\textbf{Step 4: Apply scaling, shift, and linearity}",
+            r"X(\omega)=-\frac{j\pi}{a}\,e^{j\omega\frac{b}{a}}\,\mathrm{sign}(\omega)",
+            r"\text{Substitute }a=%s,\;b=%s,\;\frac{b}{a}=%s" % (latex(a), latex(b), latex(shift)),
+        ]
+        steps += [
+            r"\textbf{Final Result}",
+            r"X(\omega)=" + (_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X))),
+        ]
         return ("distribution_form", True, X, steps, "", None)
     except Exception:
         return None

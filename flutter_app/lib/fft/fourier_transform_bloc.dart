@@ -15,7 +15,18 @@ double _sinh(double x) => (math.exp(x) - math.exp(-x)) / 2.0;
 //   (t+1)(t+2) -> (t+1)*(t+2)
 // Note: we avoid inserting '*' between a known function name and '(' (e.g., sin(...)).
 String _insertImplicitMul(String s) {
-  s = s.replaceAll(' ', '');
+  s = s
+      .replaceAll(' ', '')
+      .replaceAll('\uFF08', '(')
+      .replaceAll('\uFF09', ')')
+      .replaceAll('\uFF0C', ',')
+      .replaceAll('\u3001', ',')
+      .replaceAll('\u2212', '-')
+      .replaceAll(r'\bullet', '\u2022')
+      .replaceAll('\u00B7', '\u2022')
+      .replaceAll('\u2219', '\u2022')
+      .replaceAll('\u22C6', '\u2022')
+      .replaceAll('\u2217', '\u2022');
   bool isDigit(int c) => c >= 48 && c <= 57;
   bool isAlpha(int c) =>
       (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95; // A-Z a-z _
@@ -34,15 +45,26 @@ String _insertImplicitMul(String s) {
     final cu = ch.codeUnitAt(0);
 
     // number: 12, 12.3, .5
-    if (isDigit(cu) || (ch == '.' && i + 1 < s.length && isDigit(s.codeUnitAt(i + 1)))) {
+    if (isDigit(cu) ||
+        (ch == '.' && i + 1 < s.length && isDigit(s.codeUnitAt(i + 1)))) {
       int j = i;
       bool seenDot = false;
-      if (s[j] == '.') { seenDot = true; j++; }
+      if (s[j] == '.') {
+        seenDot = true;
+        j++;
+      }
       while (j < s.length) {
         final cj = s[j];
         final u = cj.codeUnitAt(0);
-        if (isDigit(u)) { j++; continue; }
-        if (cj == '.' && !seenDot) { seenDot = true; j++; continue; }
+        if (isDigit(u)) {
+          j++;
+          continue;
+        }
+        if (cj == '.' && !seenDot) {
+          seenDot = true;
+          j++;
+          continue;
+        }
         break;
       }
 
@@ -62,7 +84,10 @@ String _insertImplicitMul(String s) {
       int j = i + 1;
       while (j < s.length) {
         final uj = s.codeUnitAt(j);
-        if (isAlpha(uj) || isDigit(uj)) { j++; continue; }
+        if (isAlpha(uj) || isDigit(uj)) {
+          j++;
+          continue;
+        }
         break;
       }
       final id = s.substring(i, j);
@@ -80,7 +105,8 @@ String _insertImplicitMul(String s) {
 
     // parentheses
     if (ch == '(') {
-      if (!prevIsFuncName() && (prevType == 'num' || prevType == 'id' || prevType == 'rpar')) {
+      if (!prevIsFuncName() &&
+          (prevType == 'num' || prevType == 'id' || prevType == 'rpar')) {
         out.write('*');
       }
       out.write('(');
@@ -116,21 +142,28 @@ String _insertImplicitMul(String s) {
   return out.toString();
 }
 
+String normalizeInputExpression(String expression) {
+  return _insertImplicitMul(expression.trim());
+}
+
 bool _isFuncName(String id) {
   // Must match the function names supported by the local parser.
   // Add more names here if you add more _Func1/_Func2 implementations.
   const funcs = <String>{
-    'sin', 'cos', 'tan',
-    'sinh', 'cosh',
-    'exp', 'abs',
-    'u', 'heaviside',
+    'sin',
+    'cos',
+    'tan',
+    'sinh',
+    'cosh',
+    'exp',
+    'abs',
+    'u',
+    'heaviside',
     'delta',
     'frac',
   };
   return funcs.contains(id);
 }
-
-
 
 // ---------------- Engineering auto time-window ----------------
 // Many signals (e.g. u(t-2)-u(t-5)) need a time window that actually includes
@@ -252,7 +285,9 @@ double? _tryParseConst(String s) {
 
   return null;
 }
-class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformState> {
+
+class FourierTransformBloc
+    extends Bloc<FourierTransformEvent, FourierTransformState> {
   FourierTransformBloc() : super(FourierTransformState.initial()) {
     on<TransformExpressionRequested>(_onTransform);
     on<ClearRequested>(_onClear);
@@ -263,10 +298,10 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
   }
 
   Future<void> _onTransform(
-      TransformExpressionRequested event,
-      Emitter<FourierTransformState> emit,
-      ) async {
-    final expr = _insertImplicitMul(event.expression.trim());
+    TransformExpressionRequested event,
+    Emitter<FourierTransformState> emit,
+  ) async {
+    final expr = normalizeInputExpression(event.expression);
     final n = event.n;
 
     if (expr.isEmpty) {
@@ -275,18 +310,25 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
     }
 
     if (expr.contains('□')) {
-      emit(state.copyWith(status: FourierStatus.failure, error: '还有未填写的空框（□），请先补全分子/分母'));
+      emit(
+        state.copyWith(
+          status: FourierStatus.failure,
+          error: '还有未填写的空框（□），请先补全分子/分母',
+        ),
+      );
       return;
     }
 
-    emit(state.copyWith(
-      status: FourierStatus.running,
-      expression: expr,
-      pow2: event.pow2,
-      n: n,
-      a: event.a,
-      error: null,
-    ));
+    emit(
+      state.copyWith(
+        status: FourierStatus.running,
+        expression: expr,
+        pow2: event.pow2,
+        n: n,
+        a: event.a,
+        error: null,
+      ),
+    );
 
     try {
       // Sampling window (engineering): choose a window that covers common shifts like u(t-a), delta(t-a), abs(t-a).
@@ -312,14 +354,13 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
       final win = (n <= 1)
           ? List<double>.filled(n, 1.0)
           : List<double>.generate(
-        n,
-            (i) => 0.5 - 0.5 * math.cos(2.0 * math.pi * i / (n - 1)),
-      );
-      final meanW = win.isEmpty ? 1.0 : (win.reduce((a, b) => a + b) / win.length);
-      final windowedC = List<_C>.generate(
-        n,
-            (i) => signalC[i].scale(win[i]),
-      );
+              n,
+              (i) => 0.5 - 0.5 * math.cos(2.0 * math.pi * i / (n - 1)),
+            );
+      final meanW = win.isEmpty
+          ? 1.0
+          : (win.reduce((a, b) => a + b) / win.length);
+      final windowedC = List<_C>.generate(n, (i) => signalC[i].scale(win[i]));
 
       // Continuous FT approximation using FFT:
 
@@ -331,18 +372,23 @@ class FourierTransformBloc extends Bloc<FourierTransformEvent, FourierTransformS
 
       // Full spectrum (fftshift): ω from negative to positive
       final Xs = _fftShift(X);
-      final omega = List<double>.generate(n, (i) => 2.0 * math.pi * (i - n / 2) / (n * dt));
+      final omega = List<double>.generate(
+        n,
+        (i) => 2.0 * math.pi * (i - n / 2) / (n * dt),
+      );
       final magnitude = List<double>.generate(n, (i) => Xs[i].abs());
 
-      emit(state.copyWith(
-        status: FourierStatus.success,
-        dt: dt,
-        t: t,
-        signal: signal,
-        omega: omega,
-        magnitude: magnitude,
-        error: null,
-      ));
+      emit(
+        state.copyWith(
+          status: FourierStatus.success,
+          dt: dt,
+          t: t,
+          signal: signal,
+          omega: omega,
+          magnitude: magnitude,
+          error: null,
+        ),
+      );
     } catch (e) {
       emit(state.copyWith(status: FourierStatus.failure, error: '解析/计算失败：$e'));
     }
@@ -374,7 +420,10 @@ _C _cDiv(_C a, _C b) {
     const tiny = 1e-12;
     return _C(a.re / tiny, a.im / tiny);
   }
-  return _C((a.re * b.re + a.im * b.im) / denom, (a.im * b.re - a.re * b.im) / denom);
+  return _C(
+    (a.re * b.re + a.im * b.im) / denom,
+    (a.im * b.re - a.re * b.im) / denom,
+  );
 }
 
 _C _cExp(_C z) {
@@ -397,7 +446,8 @@ _C _cCos(_C z) {
   return _C(math.cos(x) * _cosh(y), -math.sin(x) * _sinh(y));
 }
 
-List<_C> _fftReal(List<double> x) => _fft(x.map((v) => _C(v, 0)).toList(), inverse: false);
+List<_C> _fftReal(List<double> x) =>
+    _fft(x.map((v) => _C(v, 0)).toList(), inverse: false);
 List<_C> _ifft(List<_C> X) => _fft(X, inverse: true);
 
 List<_C> _fft(List<_C> a, {required bool inverse}) {
@@ -477,7 +527,12 @@ class _EvalContext {
   final double dt;
   final double a;
   final double eps;
-  const _EvalContext({required this.t, required this.dt, required this.a, required this.eps});
+  const _EvalContext({
+    required this.t,
+    required this.dt,
+    required this.a,
+    required this.eps,
+  });
 }
 
 abstract class _Node {
@@ -495,33 +550,39 @@ class _Num extends _Node {
   final double v;
   _Num(this.v);
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => List<_C>.filled(ctx.t.length, _C(v, 0));
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      List<_C>.filled(ctx.t.length, _C(v, 0));
 }
 
 class _VarT extends _Node {
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => ctx.t.map((x) => _C(x, 0)).toList();
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      ctx.t.map((x) => _C(x, 0)).toList();
 }
 
 class _VarA extends _Node {
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => List<_C>.filled(ctx.t.length, _C(ctx.a, 0));
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      List<_C>.filled(ctx.t.length, _C(ctx.a, 0));
 }
 
 class _ConstPi extends _Node {
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => List<_C>.filled(ctx.t.length, _C(math.pi, 0));
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      List<_C>.filled(ctx.t.length, _C(math.pi, 0));
 }
 
 class _ConstE extends _Node {
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => List<_C>.filled(ctx.t.length, _C(math.e, 0));
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      List<_C>.filled(ctx.t.length, _C(math.e, 0));
 }
 
 /// Imaginary unit: I = sqrt(-1)
 class _ConstI extends _Node {
   @override
-  List<_C> evalComplexArray(_EvalContext ctx) => List<_C>.filled(ctx.t.length, const _C(0, 1));
+  List<_C> evalComplexArray(_EvalContext ctx) =>
+      List<_C>.filled(ctx.t.length, const _C(0, 1));
 }
 
 class _Unary extends _Node {
@@ -577,7 +638,7 @@ class _Binary extends _Node {
           out[i] = _cDiv(a[i], safeDen);
           break;
         case '^':
-        // Power is only supported for real base and real exponent in this numeric engine.
+          // Power is only supported for real base and real exponent in this numeric engine.
           final base = a[i];
           final exp = b[i];
           if (base.im.abs() > 1e-12 || exp.im.abs() > 1e-12) {
@@ -622,15 +683,18 @@ class _Func1 extends _Node {
         for (int i = 0; i < n; i++) out[i] = _cExp(x[i]);
         break;
       case 'abs':
-      // abs(z): magnitude for complex, |x| for real.
+        // abs(z): magnitude for complex, |x| for real.
         for (int i = 0; i < n; i++) out[i] = _C(x[i].abs(), 0);
         break;
       case 'u':
-        for (int i = 0; i < n; i++) out[i] = x[i].re >= 0 ? const _C(1, 0) : const _C(0, 0);
+        for (int i = 0; i < n; i++)
+          out[i] = x[i].re >= 0 ? const _C(1, 0) : const _C(0, 0);
         break;
       case 'delta':
         for (int i = 0; i < n; i++) {
-          out[i] = (x[i].re.abs() <= ctx.dt / 2) ? _C(1.0 / ctx.dt, 0) : const _C(0, 0);
+          out[i] = (x[i].re.abs() <= ctx.dt / 2)
+              ? _C(1.0 / ctx.dt, 0)
+              : const _C(0, 0);
         }
         break;
       default:
@@ -671,7 +735,20 @@ class _Func2 extends _Node {
   }
 }
 
-enum _TokType { number, ident, plus, minus, star, slash, caret, dot, comma, lparen, rparen, eof }
+enum _TokType {
+  number,
+  ident,
+  plus,
+  minus,
+  star,
+  slash,
+  caret,
+  dot,
+  comma,
+  lparen,
+  rparen,
+  eof,
+}
 
 class _Tok {
   final _TokType type;

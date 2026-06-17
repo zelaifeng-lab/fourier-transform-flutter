@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../responsive.dart';
+import '../scrollable_content.dart';
 
 class SymbolicResult {
   final bool ok;
@@ -56,19 +57,26 @@ class SymbolicResult {
     );
   }
 }
+
 Future<SymbolicResult> computeByBackendOnly(String expression) async {
-// Backend selection:
-// - Web (GitHub Pages/Flutter Web): use your public Render URL (HTTPS)
-// - Android emulator: use 10.0.2.2 to reach host machine
-// - You can override for any build with:
-//   flutter run/build ... --dart-define=API_BASE_URL=https://your-backend
-  const String envBase = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  // Backend selection:
+  // - Web (GitHub Pages/Flutter Web): use your public Render URL (HTTPS)
+  // - Android emulator: use 10.0.2.2 to reach host machine
+  // - You can override for any build with:
+  //   flutter run/build ... --dart-define=API_BASE_URL=https://your-backend
+  const String envBase = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: '',
+  );
   const String renderBase = 'https://fourier-transform-flutter.onrender.com';
   const String androidEmulatorBase = 'http://10.0.2.2:8000';
 
-  final String base = envBase.isNotEmpty ? envBase : (kIsWeb ? renderBase : androidEmulatorBase);
-  final Uri uri = Uri.parse(base.endsWith('/') ? '${base}fourier' : '${base}/fourier');
-
+  final String base = envBase.isNotEmpty
+      ? envBase
+      : (kIsWeb ? renderBase : androidEmulatorBase);
+  final Uri uri = Uri.parse(
+    base.endsWith('/') ? '${base}fourier' : '${base}/fourier',
+  );
 
   try {
     final res = await http.post(
@@ -87,8 +95,10 @@ Future<SymbolicResult> computeByBackendOnly(String expression) async {
     final j = jsonDecode(res.body) as Map<String, dynamic>;
     final ok = (j['ok'] == true);
 
-    final inputLatex = (j['input_latex'] ?? r'\text{(parse failed)}').toString();
-    final resultLatex = (j['result_latex'] ?? r'\text{Unable to compute}').toString();
+    final inputLatex = (j['input_latex'] ?? r'\text{(parse failed)}')
+        .toString();
+    final resultLatex = (j['result_latex'] ?? r'\text{Unable to compute}')
+        .toString();
     final steps = (j['steps_latex'] as List<dynamic>? ?? const [])
         .map((e) => e.toString())
         .toList();
@@ -108,7 +118,6 @@ Future<SymbolicResult> computeByBackendOnly(String expression) async {
     );
   }
 }
-
 
 // UI page
 
@@ -142,12 +151,9 @@ class _SymbolPageState extends State<SymbolPage> {
     final theme = Theme.of(context);
 
     Widget texLine(String latex, {TextStyle? style}) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Math.tex(
-          latex,
-          textStyle: style ?? theme.textTheme.bodyLarge,
-        ),
+      return ScrollableMathLine(
+        latex: latex,
+        textStyle: style ?? theme.textTheme.bodyLarge,
       );
     }
 
@@ -161,9 +167,7 @@ class _SymbolPageState extends State<SymbolPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Symbolic Fourier (Backend)'),
-      ),
+      appBar: AppBar(title: const Text('Symbolic Fourier (Backend)')),
       body: FutureBuilder<SymbolicResult>(
         future: _future,
         builder: (context, snap) {
@@ -171,20 +175,23 @@ class _SymbolPageState extends State<SymbolPage> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final res = snap.data ??
+          final res =
+              snap.data ??
               SymbolicResult.fail(
                 inputLatex: r'\text{(no data)}',
                 messageLatex: r'\text{Unable to compute}',
               );
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          return ResponsiveScrollView(
             children: [
               _Card(
                 title: 'Input',
-                child: texLine(
-                  r'\displaystyle x(t)=' + res.inputLatex,
-                  style: theme.textTheme.titleLarge,
+                child: Semantics(
+                  label: 'symbolic-input:${res.inputLatex}',
+                  child: texLine(
+                    r'\displaystyle x(t)=' + res.inputLatex,
+                    style: theme.textTheme.titleLarge,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -193,12 +200,18 @@ class _SymbolPageState extends State<SymbolPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    texLine(
-                      r'\displaystyle X(\omega)=' + res.resultLatex,
-                      style: theme.textTheme.titleLarge,
+                    Semantics(
+                      label: 'symbolic-result:${res.resultLatex}',
+                      child: texLine(
+                        r'\displaystyle X(\omega)=' + res.resultLatex,
+                        style: theme.textTheme.titleLarge,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    if (!res.ok) statusLine('Closed-form not found; showing integral / symbolic form.'),
+                    if (!res.ok)
+                      statusLine(
+                        'Closed-form not found; showing integral / symbolic form.',
+                      ),
                   ],
                 ),
               ),
@@ -208,37 +221,41 @@ class _SymbolPageState extends State<SymbolPage> {
                 child: res.stepsLatex.isEmpty
                     ? statusLine('No steps.')
                     : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (int i = 0; i < res.stepsLatex.length; i++) ...[
-                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 28,
-                            child: Text(
-                              '${i + 1}.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+                          for (int i = 0; i < res.stepsLatex.length; i++) ...[
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 28,
+                                  child: Text(
+                                    '${i + 1}.',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: texLine(
+                                    r'\displaystyle ' + res.stepsLatex[i],
+                                    style: theme.textTheme.bodyLarge,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (i != res.stepsLatex.length - 1) ...[
+                              const SizedBox(height: 10),
+                              Divider(
+                                color: theme.colorScheme.outlineVariant
+                                    .withValues(alpha: 0.35),
                               ),
-                            ),
-                          ),
-                          Expanded(
-                            child: texLine(
-                              r'\displaystyle ' + res.stepsLatex[i],
-                              style: theme.textTheme.bodyLarge,
-                            ),
-                          ),
+                              const SizedBox(height: 10),
+                            ],
+                          ],
                         ],
                       ),
-                      if (i != res.stepsLatex.length - 1) ...[
-                        const SizedBox(height: 10),
-                        Divider(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35)),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ],
-                ),
               ),
             ],
           );
@@ -276,7 +293,6 @@ class _Card extends StatelessWidget {
   }
 }
 
-
 /// Symbolic
 
 class SymbolicFourier {
@@ -295,7 +311,10 @@ class SymbolicFourier {
     if (expr.startsWith('-')) {
       final rest = expr.substring(1);
       if (rest.isEmpty) {
-        return SymbolicResult.fail(inputLatex: r'-', messageLatex: r'\text{Unable to compute}');
+        return SymbolicResult.fail(
+          inputLatex: r'-',
+          messageLatex: r'\text{Unable to compute}',
+        );
       }
       final inner = tryCompute(rest);
       if (!inner.ok) return inner;
@@ -320,8 +339,8 @@ class SymbolicFourier {
       final resultLatex = cst.isZero
           ? r'0'
           : (cLatex == r'1'
-          ? r'2\pi\,\delta(\omega)'
-          : r'2\pi\,' + cLatex + r'\,\delta(\omega)');
+                ? r'2\pi\,\delta(\omega)'
+                : r'2\pi\,' + cLatex + r'\,\delta(\omega)');
       return SymbolicResult.ok(
         inputLatex: cst.inputLatex,
         resultLatex: resultLatex,
@@ -344,7 +363,10 @@ class SymbolicFourier {
       if (invT2A2.aNumeric != null) {
         final a = invT2A2.aNumeric!;
         if (a <= 0) {
-          return SymbolicResult.fail(inputLatex: invT2A2.inputLatex, messageLatex: r'\text{Unable to compute（requires }a>0\text{）}');
+          return SymbolicResult.fail(
+            inputLatex: invT2A2.inputLatex,
+            messageLatex: r'\text{Unable to compute（requires }a>0\text{）}',
+          );
         }
         final aL = invT2A2.aLatex ?? _numToLatex(a);
         return SymbolicResult.ok(
@@ -353,21 +375,32 @@ class SymbolicFourier {
           stepsLatex: _aligned([
             r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{t^{2}+a^{2}}e^{-j\omega t}\,dt',
             r'\text{基本对：}\;\mathcal{F}\left\{\frac{1}{t^{2}+a^{2}}\right\}=\frac{\pi}{a}e^{-a|\omega|}\;(a>0)',
-            r'\Rightarrow X(\omega)=\frac{\pi}{' + aL + r'}e^{-(' + aL + r')|\omega|}',
+            r'\Rightarrow X(\omega)=\frac{\pi}{' +
+                aL +
+                r'}e^{-(' +
+                aL +
+                r')|\omega|}',
           ]),
           omegaAxis: omegaAxis,
-          spectrumData: omegaAxis.map((w) => (math.pi / a) * math.exp(-a * w.abs())).toList(),
+          spectrumData: omegaAxis
+              .map((w) => (math.pi / a) * math.exp(-a * w.abs()))
+              .toList(),
         );
       }
       if (invT2A2.aSymbol != null) {
         final aS = invT2A2.aSymbol!;
         return SymbolicResult.ok(
           inputLatex: invT2A2.inputLatex,
-          resultLatex: r'\frac{\pi}{' + aS + r'}e^{-(' + aS + r')|\omega|}\quad(a>0)',
+          resultLatex:
+              r'\frac{\pi}{' + aS + r'}e^{-(' + aS + r')|\omega|}\quad(a>0)',
           stepsLatex: _aligned([
             r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{t^{2}+a^{2}}e^{-j\omega t}\,dt',
             r'\text{基本对：}\;\mathcal{F}\left\{\frac{1}{t^{2}+a^{2}}\right\}=\frac{\pi}{a}e^{-a|\omega|}\;(a>0)',
-            r'\Rightarrow X(\omega)=\frac{\pi}{' + aS + r'}e^{-(' + aS + r')|\omega|}\;(a>0)',
+            r'\Rightarrow X(\omega)=\frac{\pi}{' +
+                aS +
+                r'}e^{-(' +
+                aS +
+                r')|\omega|}\;(a>0)',
           ]),
           omegaAxis: omegaAxis,
           spectrumData: List<double>.filled(omegaAxis.length, 0.0),
@@ -384,21 +417,34 @@ class SymbolicFourier {
 
       final omegaAxisLocal = _linspace(_wMin, _wMax, _samples);
       final baseRes = _computeInvTPowN(n, omegaAxisLocal);
-      if (baseRes == null) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+      if (baseRes == null)
+        return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
 
       final phase = (sign == '-')
           ? (r'e^{-j\omega ' + a + r'}')
           : (r'e^{j\omega ' + a + r'}');
 
-      final inputLatex = r'\frac{1}{(t' + sign + a + r')^{' + n.toString() + r'}}';
+      final inputLatex =
+          r'\frac{1}{(t' + sign + a + r')^{' + n.toString() + r'}}';
 
       return SymbolicResult.ok(
         inputLatex: inputLatex,
         resultLatex: phase + r'\left(' + baseRes.resultLatex + r'\right)',
         stepsLatex: _aligned([
-          r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{(t' + sign + a + r')^{' + n.toString() + r'}}e^{-j\omega t}\,dt',
-          r'\text{Let }g(t)=\frac{1}{t^{' + n.toString() + r'}}\Rightarrow G(\omega)=' + baseRes.resultLatex,
-          r'x(t)=g(t' + (sign == '-' ? '+' : '-') + a + r') \;\Rightarrow\; X(\omega)=e' +
+          r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{(t' +
+              sign +
+              a +
+              r')^{' +
+              n.toString() +
+              r'}}e^{-j\omega t}\,dt',
+          r'\text{Let }g(t)=\frac{1}{t^{' +
+              n.toString() +
+              r'}}\Rightarrow G(\omega)=' +
+              baseRes.resultLatex,
+          r'x(t)=g(t' +
+              (sign == '-' ? '+' : '-') +
+              a +
+              r') \;\Rightarrow\; X(\omega)=e' +
               (sign == '-' ? r'^{-j\omega ' : r'^{j\omega ') +
               a +
               r'}\,G(\omega)',
@@ -408,7 +454,7 @@ class SymbolicFourier {
       );
     }
 
-// PF: rational polynomial P(t)/Q(t) -> partial fractions (real-linear only).
+    // PF: rational polynomial P(t)/Q(t) -> partial fractions (real-linear only).
     // Only triggers when both numerator and denominator are polynomials (implicit multiplication allowed),
     // and Q(t) can be fully factorized into real linear factors (including repeated roots).
     // Unexpand perfect-square quadratic: 1/(t^2 + b*t + c) where discriminant==0 -> 1/(t+s)^2 (computed directly)
@@ -421,15 +467,34 @@ class SymbolicFourier {
       final sLatex = _numToLatex(s);
       final phase = r'e^{j\omega(' + sLatex + r')}';
       return SymbolicResult.ok(
-        inputLatex: r'\frac{1}{t^{2}+' + _numToLatex(2*s) + r't+' + _numToLatex(s*s) + r'}',
+        inputLatex:
+            r'\frac{1}{t^{2}+' +
+            _numToLatex(2 * s) +
+            r't+' +
+            _numToLatex(s * s) +
+            r'}',
         resultLatex: phase + r'\left(-\pi|\omega|\right)',
         stepsLatex: _aligned([
-          r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{t^{2}+' + _numToLatex(2*s) + r't+' + _numToLatex(s*s) + r'}e^{-j\omega t}\,dt',
-          r't^{2}+' + _numToLatex(2*s) + r't+' + _numToLatex(s*s) + r'=(t+' + sLatex + r')^{2}',
+          r'X(\omega)=\int_{-\infty}^{\infty}\frac{1}{t^{2}+' +
+              _numToLatex(2 * s) +
+              r't+' +
+              _numToLatex(s * s) +
+              r'}e^{-j\omega t}\,dt',
+          r't^{2}+' +
+              _numToLatex(2 * s) +
+              r't+' +
+              _numToLatex(s * s) +
+              r'=(t+' +
+              sLatex +
+              r')^{2}',
           r'\Rightarrow\;x(t)=\frac{1}{(t+' + sLatex + r')^{2}}',
-          r'\text{Let }f(t)=\frac{1}{t^{2}},\;x(t)=f\bigl(t-(-' + sLatex + r')\bigr)',
+          r'\text{Let }f(t)=\frac{1}{t^{2}},\;x(t)=f\bigl(t-(-' +
+              sLatex +
+              r')\bigr)',
           r'\text{Time-shift property: }\mathcal{F}\{f(t-a)\}=e^{-j\omega a}F(\omega)',
-          r'\Rightarrow\;X(\omega)=e^{j\omega(' + sLatex + r')}\,\mathcal{F}\left\{\frac{1}{t^{2}}\right\}',
+          r'\Rightarrow\;X(\omega)=e^{j\omega(' +
+              sLatex +
+              r')}\,\mathcal{F}\left\{\frac{1}{t^{2}}\right\}',
           r'\mathcal{F}\left\{\frac{1}{t^{2}}\right\}=-\pi|\omega|',
         ]),
         omegaAxis: omegaAxisLocal,
@@ -442,7 +507,8 @@ class SymbolicFourier {
       if (!pf.ok) {
         return SymbolicResult.fail(
           inputLatex: pf.inputLatex,
-          messageLatex: pf.messageLatex ?? r'\text{Unsupported in current version}',
+          messageLatex:
+              pf.messageLatex ?? r'\text{Unsupported in current version}',
         );
       }
       // Avoid infinite recursion if decomposition returns the same expression.
@@ -467,15 +533,18 @@ class SymbolicFourier {
 
     final omegaAxis = _linspace(_wMin, _wMax, _samples);
 
-// Perfect-square quadratic (expanded): 1/(t^2 + b*t + c) where b^2-4c = 0
+    // Perfect-square quadratic (expanded): 1/(t^2 + b*t + c) where b^2-4c = 0
     final psq = _matchInvPerfectSquareExpanded(expr);
     if (psq != null) {
       final s = psq.shift; // t^2 + b t + c = (t + s)^2
       final baseRes = _computeInvTPowN(2, omegaAxis);
-      if (baseRes == null) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+      if (baseRes == null)
+        return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
 
       final sLatex = _numToLatex(s.abs());
-      final phase = s >= 0 ? (r'e^{j\omega ' + sLatex + r'}') : (r'e^{-j\omega ' + sLatex + r'}');
+      final phase = s >= 0
+          ? (r'e^{j\omega ' + sLatex + r'}')
+          : (r'e^{-j\omega ' + sLatex + r'}');
 
       return SymbolicResult.ok(
         inputLatex: r'\frac{1}{(t' + (s >= 0 ? '+' : '-') + sLatex + r')^{2}}',
@@ -513,7 +582,6 @@ class SymbolicFourier {
       );
     }
 
-
     // 0) Expand polynomial * u(t): (P(t))*u(t) or u(t)*(P(t))
     final polyU = _matchPolynomialTimesU(expr);
     if (polyU != null) {
@@ -521,7 +589,8 @@ class SymbolicFourier {
       if (polyU.terms.length >= 2) {
         final expanded = polyU.terms.join('+');
         final r = tryCompute(expanded);
-        if (!r.ok) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+        if (!r.ok)
+          return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
 
         return SymbolicResult.ok(
           inputLatex: _toLatexFallback(expr),
@@ -529,7 +598,9 @@ class SymbolicFourier {
           stepsLatex: [
             r'X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt',
             r'\text{对 }(P(t))u(t)\text{ Expand using the distributive property of multiplication：}',
-            r'x(t)=(' + _toLatexFallback(polyU.poly) + r')u(t)=' +
+            r'x(t)=(' +
+                _toLatexFallback(polyU.poly) +
+                r')u(t)=' +
                 polyU.terms.map(_toLatexFallback).join('+'),
             r'\text{再用Linearity：}\;\mathcal{F}\{\sum x_i\}=\sum \mathcal{F}\{x_i\}.',
             ...r.stepsLatex,
@@ -545,9 +616,12 @@ class SymbolicFourier {
     if (sumParts != null) {
       final sub = <SymbolicResult>[];
       for (final p in sumParts) {
-        final part = p.trim().startsWith('+') ? p.trim().substring(1) : p.trim();
+        final part = p.trim().startsWith('+')
+            ? p.trim().substring(1)
+            : p.trim();
         final r = tryCompute(part);
-        if (!r.ok) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+        if (!r.ok)
+          return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
         sub.add(r);
       }
 
@@ -572,7 +646,9 @@ class SymbolicFourier {
         r'\text{Linearity：}\;\mathcal{F}\{x_1+x_2+\cdots\}=\mathcal{F}\{x_1\}+\mathcal{F}\{x_2\}+\cdots',
       ];
       for (int i = 0; i < sub.length; i++) {
-        steps.add(r'X_' + (i + 1).toString() + r'(\omega)=' + sub[i].resultLatex);
+        steps.add(
+          r'X_' + (i + 1).toString() + r'(\omega)=' + sub[i].resultLatex,
+        );
       }
 
       return SymbolicResult.ok(
@@ -580,12 +656,17 @@ class SymbolicFourier {
         resultLatex: sub.map((r) => '(' + r.resultLatex + ')').join('+'),
         stepsLatex: steps,
         omegaAxis: omegaAxis,
-        spectrumData: canCombine ? combined : List<double>.filled(omegaAxis.length, 0.0),
+        spectrumData: canCombine
+            ? combined
+            : List<double>.filled(omegaAxis.length, 0.0),
       );
     }
 
     // 2) Convolution (black dot) – derivation only (numeric plot is placeholder)
-    if (expr.contains('•') || expr.contains(r'\bullet') || expr.contains('∙') || expr.contains('⋆')) {
+    if (expr.contains('•') ||
+        expr.contains(r'\bullet') ||
+        expr.contains('∙') ||
+        expr.contains('⋆')) {
       final conv = _splitConvolutionTopLevel(expr);
       if (conv != null) {
         final fExpr = conv.$1.trim();
@@ -620,14 +701,16 @@ class SymbolicFourier {
           if (axisCompatible) {
             spec = List<double>.generate(
               fRes.spectrumData.length,
-                  (i) => fRes.spectrumData[i] * gRes.spectrumData[i],
+              (i) => fRes.spectrumData[i] * gRes.spectrumData[i],
             );
           }
         }
 
         return SymbolicResult.ok(
-          inputLatex: r'(' + fRes.inputLatex + r')\bullet(' + gRes.inputLatex + r')',
-          resultLatex: r'(' + fRes.resultLatex + r')\cdot(' + gRes.resultLatex + r')',
+          inputLatex:
+              r'(' + fRes.inputLatex + r')\bullet(' + gRes.inputLatex + r')',
+          resultLatex:
+              r'(' + fRes.resultLatex + r')\cdot(' + gRes.resultLatex + r')',
           stepsLatex: _aligned([
             r'X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt',
             r'x(t)=(f\bullet g)(t)=\int_{-\infty}^{\infty}f(\tau)\,g(t-\tau)\,d\tau',
@@ -638,8 +721,12 @@ class SymbolicFourier {
             r'F(\omega)=' + fRes.resultLatex,
             r'G(\omega)=' + gRes.resultLatex,
           ]),
-          omegaAxis: (spec.isNotEmpty && fRes.omegaAxis.isNotEmpty) ? fRes.omegaAxis : omegaAxis,
-          spectrumData: (spec.isNotEmpty) ? spec : (omegaAxis.map((w) => w.abs()).toList()),
+          omegaAxis: (spec.isNotEmpty && fRes.omegaAxis.isNotEmpty)
+              ? fRes.omegaAxis
+              : omegaAxis,
+          spectrumData: (spec.isNotEmpty)
+              ? spec
+              : (omegaAxis.map((w) => w.abs()).toList()),
         );
       }
     }
@@ -664,7 +751,9 @@ class SymbolicFourier {
         inputLatex: r'\delta(t-' + a + r')',
         resultLatex: r'e^{-j\omega ' + a + r'}',
         stepsLatex: _aligned([
-          r'X(\omega)=\int_{-\infty}^{\infty}\delta(t-' + a + r')e^{-j\omega t}\,dt',
+          r'X(\omega)=\int_{-\infty}^{\infty}\delta(t-' +
+              a +
+              r')e^{-j\omega t}\,dt',
           r'=e^{-j\omega ' + a + r'}',
         ]),
         omegaAxis: omegaAxis,
@@ -705,19 +794,28 @@ class SymbolicFourier {
 
       return SymbolicResult.ok(
         inputLatex: inputLatex,
-        resultLatex: phase + r'\left(\pi\delta(\omega)+\frac{1}{j\omega}\right)',
+        resultLatex:
+            phase + r'\left(\pi\delta(\omega)+\frac{1}{j\omega}\right)',
         stepsLatex: _aligned([
           r'X(\omega)=\int_{-\infty}^{\infty}u(t' +
               (sign == '-' ? '-' : '+') +
               a +
               r')e^{-j\omega t}\,dt',
           r'=\int_{' + lower + r'}^{\infty}e^{-j\omega t}\,dt',
-          r'\text{Let }\tau=t-(' + lower + r')\Rightarrow t=\tau+(' + lower + r')',
-          r'=e^{-j\omega(' + lower + r')}\int_{0}^{\infty}e^{-j\omega\tau}\,d\tau',
+          r'\text{Let }\tau=t-(' +
+              lower +
+              r')\Rightarrow t=\tau+(' +
+              lower +
+              r')',
+          r'=e^{-j\omega(' +
+              lower +
+              r')}\int_{0}^{\infty}e^{-j\omega\tau}\,d\tau',
           r'=e^{-j\omega(' +
               lower +
               r')}\left(\frac{1}{j\omega}+\pi\delta(\omega)\right)',
-          r'\Rightarrow X(\omega)=' + phase + r'\left(\pi\delta(\omega)+\frac{1}{j\omega}\right)',
+          r'\Rightarrow X(\omega)=' +
+              phase +
+              r'\left(\pi\delta(\omega)+\frac{1}{j\omega}\right)',
         ]),
         omegaAxis: omegaAxis,
         spectrumData: omegaAxis.map((w) => w.abs()).toList(),
@@ -735,7 +833,8 @@ class SymbolicFourier {
         if (aNum >= 0) {
           return SymbolicResult.fail(
             inputLatex: r'e^{' + aLatex + r't}u(t)',
-            messageLatex: r'\text{Unable to compute（requires }\mathrm{Re}(a)<0\text{）}',
+            messageLatex:
+                r'\text{Unable to compute（requires }\mathrm{Re}(a)<0\text{）}',
           );
         }
         return SymbolicResult.ok(
@@ -745,7 +844,11 @@ class SymbolicFourier {
             r'X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt',
             r'=\int_{0}^{\infty}e^{' + aLatex + r't}\cdot e^{-j\omega t}\,dt',
             r'=\int_{0}^{\infty}e^{(' + aLatex + r'-j\omega)t}\,dt',
-            r'=\left[\frac{1}{-(' + aLatex + r')+j\omega}e^{(' + aLatex + r'-j\omega)t}\right]_{0}^{\infty}',
+            r'=\left[\frac{1}{-(' +
+                aLatex +
+                r')+j\omega}e^{(' +
+                aLatex +
+                r'-j\omega)t}\right]_{0}^{\infty}',
             r'=\frac{1}{-(' + aLatex + r')+j\omega}\quad(\mathrm{Re}(a)<0)',
           ]),
           omegaAxis: omegaAxis,
@@ -757,7 +860,8 @@ class SymbolicFourier {
         // symbolic a
         return SymbolicResult.ok(
           inputLatex: r'e^{' + aStr + r't}u(t)',
-          resultLatex: r'\frac{1}{-(' + aStr + r')+j\omega}\quad(\mathrm{Re}(a)<0)',
+          resultLatex:
+              r'\frac{1}{-(' + aStr + r')+j\omega}\quad(\mathrm{Re}(a)<0)',
           stepsLatex: _aligned([
             r'X(\omega)=\int_{0}^{\infty}e^{(' + aStr + r'-j\omega)t}\,dt',
             r'=\frac{1}{-(' + aStr + r')+j\omega}\quad(\mathrm{Re}(a)<0)',
@@ -776,13 +880,15 @@ class SymbolicFourier {
       final n = invShift.n;
 
       final baseRes = _computeInvTPowN(n, omegaAxis);
-      if (baseRes == null) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+      if (baseRes == null)
+        return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
 
       final phase = (sign == '-')
           ? (r'e^{-j\omega ' + a + r'}')
           : (r'e^{j\omega ' + a + r'}');
 
-      final inputLatex = r'\frac{1}{(t' + sign + a + r')^{' + n.toString() + r'}}';
+      final inputLatex =
+          r'\frac{1}{(t' + sign + a + r')^{' + n.toString() + r'}}';
 
       return SymbolicResult.ok(
         inputLatex: inputLatex,
@@ -794,11 +900,19 @@ class SymbolicFourier {
               r')^{' +
               n.toString() +
               r'}}e^{-j\omega t}\,dt',
-          r'\text{令 }f(t)=\frac{1}{t^{' + n.toString() + r'}}\Rightarrow x(t)=f(t' + sign + a + r')',
+          r'\text{令 }f(t)=\frac{1}{t^{' +
+              n.toString() +
+              r'}}\Rightarrow x(t)=f(t' +
+              sign +
+              a +
+              r')',
           (sign == '-')
               ? r'f(t-a)\Longleftrightarrow e^{-j\omega a}F(\omega)'
               : r'f(t+a)=f(t-(-a))\Longleftrightarrow e^{j\omega a}F(\omega)',
-          r'F(\omega)=\mathcal{F}\left\{\frac{1}{t^{' + n.toString() + r'}}\right\}=' + baseRes.resultLatex,
+          r'F(\omega)=\mathcal{F}\left\{\frac{1}{t^{' +
+              n.toString() +
+              r'}}\right\}=' +
+              baseRes.resultLatex,
           r'\Rightarrow X(\omega)=' + phase + r'F(\omega)',
         ]),
         omegaAxis: omegaAxis,
@@ -811,7 +925,8 @@ class SymbolicFourier {
     final invN = _matchInvTPowN(expr);
     if (invN != null) {
       final baseRes = _computeInvTPowN(invN, omegaAxis);
-      if (baseRes == null) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+      if (baseRes == null)
+        return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
       return baseRes;
     }
 
@@ -822,7 +937,8 @@ class SymbolicFourier {
       final n = coeffPowU.n;
 
       final base = tryCompute('t^$n*u(t)');
-      if (!base.ok) return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
+      if (!base.ok)
+        return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
 
       final cLatex = _numToLatex(c);
 
@@ -869,7 +985,7 @@ class SymbolicFourier {
         return SymbolicResult.ok(
           inputLatex: r'\cos((' + a + r')t' + _fmtPhase(phi) + r')',
           resultLatex:
-          r'\pi\left(e^{j(' +
+              r'\pi\left(e^{j(' +
               _phiNoSign(phi) +
               r')}\delta(\omega-(' +
               a +
@@ -879,7 +995,11 @@ class SymbolicFourier {
               a +
               r'))\right)',
           stepsLatex: _aligned([
-            r'X(\omega)=\int_{-\infty}^{\infty}\cos((' + a + r')t' + _fmtPhase(phi) + r')e^{-j\omega t}\,dt',
+            r'X(\omega)=\int_{-\infty}^{\infty}\cos((' +
+                a +
+                r')t' +
+                _fmtPhase(phi) +
+                r')e^{-j\omega t}\,dt',
             r'\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}',
             r'=\frac{e^{j\phi}}{2}\int e^{-j(\omega-a)t}\,dt+\frac{e^{-j\phi}}{2}\int e^{-j(\omega+a)t}\,dt',
             r'\int_{-\infty}^{\infty}e^{-j\beta t}\,dt=2\pi\delta(\beta)',
@@ -892,7 +1012,7 @@ class SymbolicFourier {
         return SymbolicResult.ok(
           inputLatex: r'\sin((' + a + r')t' + _fmtPhase(phi) + r')',
           resultLatex:
-          r'\frac{\pi}{j}\left(e^{j(' +
+              r'\frac{\pi}{j}\left(e^{j(' +
               _phiNoSign(phi) +
               r')}\delta(\omega-(' +
               a +
@@ -902,7 +1022,11 @@ class SymbolicFourier {
               a +
               r'))\right)',
           stepsLatex: _aligned([
-            r'X(\omega)=\int_{-\infty}^{\infty}\sin((' + a + r')t' + _fmtPhase(phi) + r')e^{-j\omega t}\,dt',
+            r'X(\omega)=\int_{-\infty}^{\infty}\sin((' +
+                a +
+                r')t' +
+                _fmtPhase(phi) +
+                r')e^{-j\omega t}\,dt',
             r'\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}',
             r'=\frac{e^{j\phi}}{2j}\int e^{-j(\omega-a)t}\,dt-\frac{e^{-j\phi}}{2j}\int e^{-j(\omega+a)t}\,dt',
             r'\int_{-\infty}^{\infty}e^{-j\beta t}\,dt=2\pi\delta(\beta)',
@@ -944,31 +1068,31 @@ class SymbolicFourier {
 
       final resLatex = (kind == 'sin')
           ? (r'\frac{1}{2j}\left(e^{j(' +
-          phiNo +
-          r')}\left[\frac{1}{j(\omega-(' +
-          a +
-          r'))}+\pi\delta(\omega-(' +
-          a +
-          r'))\right]-e^{-j(' +
-          phiNo +
-          r')}\left[\frac{1}{j(\omega+(' +
-          a +
-          r'))}+\pi\delta(\omega+(' +
-          a +
-          r'))\right]\right)')
+                phiNo +
+                r')}\left[\frac{1}{j(\omega-(' +
+                a +
+                r'))}+\pi\delta(\omega-(' +
+                a +
+                r'))\right]-e^{-j(' +
+                phiNo +
+                r')}\left[\frac{1}{j(\omega+(' +
+                a +
+                r'))}+\pi\delta(\omega+(' +
+                a +
+                r'))\right]\right)')
           : (r'\frac{1}{2}\left(e^{j(' +
-          phiNo +
-          r')}\left[\frac{1}{j(\omega-(' +
-          a +
-          r'))}+\pi\delta(\omega-(' +
-          a +
-          r'))\right]+e^{-j(' +
-          phiNo +
-          r')}\left[\frac{1}{j(\omega+(' +
-          a +
-          r'))}+\pi\delta(\omega+(' +
-          a +
-          r'))\right]\right)');
+                phiNo +
+                r')}\left[\frac{1}{j(\omega-(' +
+                a +
+                r'))}+\pi\delta(\omega-(' +
+                a +
+                r'))\right]+e^{-j(' +
+                phiNo +
+                r')}\left[\frac{1}{j(\omega+(' +
+                a +
+                r'))}+\pi\delta(\omega+(' +
+                a +
+                r'))\right]\right)');
 
       return SymbolicResult.ok(
         inputLatex: inputLatex,
@@ -981,7 +1105,6 @@ class SymbolicFourier {
 
     return SymbolicResult.fail(inputLatex: _toLatexFallback(expr));
   }
-
 
   // 1/t^n (n=1/2/3)
 
@@ -1027,12 +1150,13 @@ class SymbolicFourier {
           r'=-\frac{1}{2}j\omega(-\pi|\omega|)=\frac{j\pi}{2}\omega|\omega|',
         ]),
         omegaAxis: omegaAxis,
-        spectrumData: omegaAxis.map((w) => (math.pi / 2.0) * w.abs() * w.abs()).toList(),
+        spectrumData: omegaAxis
+            .map((w) => (math.pi / 2.0) * w.abs() * w.abs())
+            .toList(),
       );
     }
     return null;
   }
-
 
   /// Normalization & rewriting
 
@@ -1099,7 +1223,6 @@ class SymbolicFourier {
 
   static String _rewrite(String expr) => expr;
 
-
   /// LaTeX helpers
 
   static String _latexFracToPlain(String s) {
@@ -1127,7 +1250,6 @@ class SymbolicFourier {
     }
     return out;
   }
-
 
   // frac(A,B) -> (A)/(B)  (supports nested parentheses)
   static String _funcFracToPlain(String s) {
@@ -1158,7 +1280,8 @@ class SymbolicFourier {
   }
 
   static _Group? _readLatexGroup(String s, int startBrace) {
-    if (startBrace < 0 || startBrace >= s.length || s[startBrace] != '{') return null;
+    if (startBrace < 0 || startBrace >= s.length || s[startBrace] != '{')
+      return null;
     int depth = 0;
     final buf = StringBuffer();
     for (int i = startBrace; i < s.length; i++) {
@@ -1193,7 +1316,10 @@ class SymbolicFourier {
     }
 
     // e^(...) -> exp(...)
-    out = out.replaceAllMapped(RegExp(r'e\^\(([^()]*)\)'), (m) => 'exp(${m.group(1)!})');
+    out = out.replaceAllMapped(
+      RegExp(r'e\^\(([^()]*)\)'),
+      (m) => 'exp(${m.group(1)!})',
+    );
 
     return out;
   }
@@ -1218,19 +1344,23 @@ class SymbolicFourier {
     if (start < expr.length) parts.add(expr.substring(start));
     if (parts.length < 2) return null;
 
-    final cleaned = parts.map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
+    final cleaned = parts
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
     return cleaned.length >= 2 ? cleaned : null;
   }
 
-
   /// Matchers
 
-  static bool _isU0(String expr) => expr == 'u(t)' || expr == 'u(t+0)' || expr == 'u(t-0)';
+  static bool _isU0(String expr) =>
+      expr == 'u(t)' || expr == 'u(t+0)' || expr == 'u(t-0)';
   static bool _isDelta0(String expr) => expr == 'δ(t)' || expr == 'delta(t)';
 
   static String? _matchDeltaShift(String expr) {
-    final m = RegExp(r'^(?:δ|delta)\(t-([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$')
-        .firstMatch(expr);
+    final m = RegExp(
+      r'^(?:δ|delta)\(t-([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$',
+    ).firstMatch(expr);
     return m?.group(1);
   }
   // Match 1/(t^2 + a^2) (a numeric or symbolic) and 1/(t^2 + K) (K numeric).
@@ -1245,7 +1375,9 @@ class SymbolicFourier {
     denom = _stripOuterParen(denom).replaceAll(' ', '');
 
     // t^2 + b*t + c  (allow "*t" or implicit "t")
-    final m = RegExp(r'^t\^2([+-][0-9]+(?:\.[0-9]+)?)\*?t([+-][0-9]+(?:\.[0-9]+)?)$').firstMatch(denom);
+    final m = RegExp(
+      r'^t\^2([+-][0-9]+(?:\.[0-9]+)?)\*?t([+-][0-9]+(?:\.[0-9]+)?)$',
+    ).firstMatch(denom);
     if (m == null) return null;
 
     final b = double.tryParse(m.group(1)!);
@@ -1270,7 +1402,8 @@ class SymbolicFourier {
     // numeric K: 1/(t^2+K) => a = sqrt(K)
     final k = double.tryParse(tail);
     if (k != null) {
-      if (k <= 0) return _InvT2A2(inputLatex: r'\frac{1}{t^{2}+' + _numToLatex(k) + r'}');
+      if (k <= 0)
+        return _InvT2A2(inputLatex: r'\frac{1}{t^{2}+' + _numToLatex(k) + r'}');
       final kL = _numToLatex(k);
       return _InvT2A2(
         inputLatex: r'\frac{1}{t^{2}+' + kL + r'}',
@@ -1280,7 +1413,9 @@ class SymbolicFourier {
     }
 
     // a^2 or 4^2
-    final mPow2 = RegExp(r'^([A-Za-z_]\w*|[+-]?\d+(?:\.\d+)?)\^2$').firstMatch(tail);
+    final mPow2 = RegExp(
+      r'^([A-Za-z_]\w*|[+-]?\d+(?:\.\d+)?)\^2$',
+    ).firstMatch(tail);
     if (mPow2 != null) {
       final base = mPow2.group(1)!;
       final baseNum = double.tryParse(base);
@@ -1290,7 +1425,10 @@ class SymbolicFourier {
           aNumeric: baseNum.abs(),
         );
       }
-      return _InvT2A2(inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}', aSymbol: base);
+      return _InvT2A2(
+        inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}',
+        aSymbol: base,
+      );
     }
 
     // (a)^2
@@ -1305,7 +1443,10 @@ class SymbolicFourier {
         );
       }
       if (RegExp(r'^[A-Za-z_]\w*$').hasMatch(base)) {
-        return _InvT2A2(inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}', aSymbol: base);
+        return _InvT2A2(
+          inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}',
+          aSymbol: base,
+        );
       }
     }
 
@@ -1313,13 +1454,18 @@ class SymbolicFourier {
     final mShort = RegExp(r'^([A-Za-z_]\w*)2$').firstMatch(tail);
     if (mShort != null) {
       final base = mShort.group(1)!;
-      return _InvT2A2(inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}', aSymbol: base);
+      return _InvT2A2(
+        inputLatex: r'\frac{1}{t^{2}+' + base + r'^{2}}',
+        aSymbol: base,
+      );
     }
     return null;
   }
 
   static _SignedShift? _matchUTShiftSigned(String expr) {
-    final m = RegExp(r'^u\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$').firstMatch(expr);
+    final m = RegExp(
+      r'^u\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$',
+    ).firstMatch(expr);
     if (m == null) return null;
     return _SignedShift(m.group(1)!, m.group(2)!);
   }
@@ -1344,11 +1490,15 @@ class SymbolicFourier {
     var s = inside.replaceAll(' ', '');
 
     // "-6*t" or "a*t"
-    final mStar = RegExp(r'^([+-]?(?:\d+(?:\.\d+)?|[A-Za-z_]\w*))\*t$').firstMatch(s);
+    final mStar = RegExp(
+      r'^([+-]?(?:\d+(?:\.\d+)?|[A-Za-z_]\w*))\*t$',
+    ).firstMatch(s);
     if (mStar != null) return mStar.group(1)!;
 
     // "-6t" or "at"
-    final mNoStar = RegExp(r'^([+-]?(?:\d+(?:\.\d+)?|[A-Za-z_]\w*))t$').firstMatch(s);
+    final mNoStar = RegExp(
+      r'^([+-]?(?:\d+(?:\.\d+)?|[A-Za-z_]\w*))t$',
+    ).firstMatch(s);
     if (mNoStar != null) return mNoStar.group(1)!;
 
     // "t" / "-t"
@@ -1361,12 +1511,15 @@ class SymbolicFourier {
   // 1/(t±a)^n and 1/(t±a)
   static _InvShiftPow? _matchInvTShiftPowSigned(String expr) {
     // 1/(t+a)
-    final m1 = RegExp(r'^1/\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$').firstMatch(expr);
+    final m1 = RegExp(
+      r'^1/\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)$',
+    ).firstMatch(expr);
     if (m1 != null) return _InvShiftPow(m1.group(1)!, m1.group(2)!, 1);
 
     // 1/(t+a)^n
-    final m2 = RegExp(r'^1/\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)\^(?:\(?\{?(\d+)\}?\)?)$')
-        .firstMatch(expr);
+    final m2 = RegExp(
+      r'^1/\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)\^(?:\(?\{?(\d+)\}?\)?)$',
+    ).firstMatch(expr);
     if (m2 != null) {
       final n = int.tryParse(m2.group(3)!);
       if (n == null || n < 1 || n > 3) return null;
@@ -1374,8 +1527,9 @@ class SymbolicFourier {
     }
 
     // 1/((t+a)^n)
-    final m3 = RegExp(r'^1/\(\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)\^(?:\(?\{?(\d+)\}?\)?)\)$')
-        .firstMatch(expr);
+    final m3 = RegExp(
+      r'^1/\(\(t([+-])([0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*)\)\^(?:\(?\{?(\d+)\}?\)?)\)$',
+    ).firstMatch(expr);
     if (m3 != null) {
       final n = int.tryParse(m3.group(3)!);
       if (n == null || n < 1 || n > 3) return null;
@@ -1419,8 +1573,11 @@ class SymbolicFourier {
 
   // c*t^n*u(t) / c*t*u(t) / ct*u(t)
   static _CoeffPowU? _matchCoeffTPowNU(String expr) {
-    final m1 = RegExp(r'^([+-]?\d+(?:\.\d+)?)\*t\^\(?(\d+)\)?\*u\(t\)$').firstMatch(expr);
-    if (m1 != null) return _CoeffPowU(double.parse(m1.group(1)!), int.parse(m1.group(2)!));
+    final m1 = RegExp(
+      r'^([+-]?\d+(?:\.\d+)?)\*t\^\(?(\d+)\)?\*u\(t\)$',
+    ).firstMatch(expr);
+    if (m1 != null)
+      return _CoeffPowU(double.parse(m1.group(1)!), int.parse(m1.group(2)!));
 
     final m2 = RegExp(r'^([+-]?\d+(?:\.\d+)?)\*t\*u\(t\)$').firstMatch(expr);
     if (m2 != null) return _CoeffPowU(double.parse(m2.group(1)!), 1);
@@ -1438,7 +1595,9 @@ class SymbolicFourier {
     if (m1 != null) {
       final poly = m1.group(1)!.trim();
       final terms = _splitTopLevelSum(poly) ?? [poly];
-      final expanded = terms.map((t) => _polyTermTimesU(t, rightU: true)).toList();
+      final expanded = terms
+          .map((t) => _polyTermTimesU(t, rightU: true))
+          .toList();
       return _PolyU(poly, expanded);
     }
 
@@ -1447,7 +1606,9 @@ class SymbolicFourier {
     if (m2 != null) {
       final poly = m2.group(1)!.trim();
       final terms = _splitTopLevelSum(poly) ?? [poly];
-      final expanded = terms.map((t) => _polyTermTimesU(t, rightU: false)).toList();
+      final expanded = terms
+          .map((t) => _polyTermTimesU(t, rightU: false))
+          .toList();
       return _PolyU(poly, expanded);
     }
 
@@ -1528,8 +1689,9 @@ class SymbolicFourier {
     }
 
     // normalize t*a -> a*t
-    final mTA = RegExp(r'^t\*([A-Za-z_]\w*|\-?[0-9]+(?:\.[0-9]+)?)((?:[+-].+)?)$')
-        .firstMatch(s);
+    final mTA = RegExp(
+      r'^t\*([A-Za-z_]\w*|\-?[0-9]+(?:\.[0-9]+)?)((?:[+-].+)?)$',
+    ).firstMatch(s);
     if (mTA != null) {
       s = '${mTA.group(1)}*t${mTA.group(2) ?? ''}';
     }
@@ -1537,22 +1699,26 @@ class SymbolicFourier {
     final m = RegExp(r'^(.+)\*t([+-].+)?$').firstMatch(s);
     if (m != null) {
       final aRaw = m.group(1)!;
-      final bRaw = (m.group(2) == null || m.group(2)!.isEmpty) ? '0' : m.group(2)!;
+      final bRaw = (m.group(2) == null || m.group(2)!.isEmpty)
+          ? '0'
+          : m.group(2)!;
       final a = aRaw.isEmpty ? '1' : aRaw;
       return _LinForm(a, bRaw);
     }
 
-    final mNoStar =
-    RegExp(r'^([+-]?(?:[0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*))t([+-].+)?$').firstMatch(s);
+    final mNoStar = RegExp(
+      r'^([+-]?(?:[0-9]+(?:\.[0-9]+)?|[A-Za-z_]\w*))t([+-].+)?$',
+    ).firstMatch(s);
     if (mNoStar != null) {
       final a = mNoStar.group(1)!;
-      final b = (mNoStar.group(2) == null || mNoStar.group(2)!.isEmpty) ? '0' : mNoStar.group(2)!;
+      final b = (mNoStar.group(2) == null || mNoStar.group(2)!.isEmpty)
+          ? '0'
+          : mNoStar.group(2)!;
       return _LinForm(a, b);
     }
 
     return null;
   }
-
 
   //Formatting
 
@@ -1572,7 +1738,8 @@ class SymbolicFourier {
   }
 
   static String _numToLatex(double x) {
-    if ((x - x.roundToDouble()).abs() < 1e-12) return x.round().toInt().toString();
+    if ((x - x.roundToDouble()).abs() < 1e-12)
+      return x.round().toInt().toString();
     var s = x.toString();
     if (s.contains('.')) {
       s = s.replaceAll(RegExp(r'0+$'), '');
@@ -1580,7 +1747,6 @@ class SymbolicFourier {
     }
     return s;
   }
-
 
   // Detect Q(t) = c2*t^2 + c0 with c1≈0 and c0/c2 = a^2 > 0. Return k0=a^2.
   static double? _matchT2PlusA2Numeric(_Poly q) {
@@ -1610,7 +1776,12 @@ class SymbolicFourier {
 
     final p = _Poly.parse(pStr);
     final q = _Poly.parse(qStr);
-    final inputLatex = r'\frac{' + (p?.toLatex() ?? _toLatexFallback(pStr)) + r'}{' + (q?.toLatex() ?? _toLatexFallback(qStr)) + r'}';
+    final inputLatex =
+        r'\frac{' +
+        (p?.toLatex() ?? _toLatexFallback(pStr)) +
+        r'}{' +
+        (q?.toLatex() ?? _toLatexFallback(qStr)) +
+        r'}';
 
     if (q == null || q.isZero) {
       // Not a pure polynomial in t -> let other matchers handle.
@@ -1626,7 +1797,6 @@ class SymbolicFourier {
     //  needed for degree >= 2 denominators.
 
     if (q.deg < 2) return null;
-
 
     // Long division if deg(P) >= deg(Q)
     var quotient = _Poly.zero();
@@ -1650,7 +1820,8 @@ class SymbolicFourier {
     if (remainder.deg >= q.deg) {
       return _PFRealResult.unsupported(
         inputLatex: inputLatex,
-        messageLatex: r'\text{Unsupported in current version：无法得到严格真分式（请检查输入）。}',
+        messageLatex:
+            r'\text{Unsupported in current version：无法得到严格真分式（请检查输入）。}',
       );
     }
 
@@ -1659,7 +1830,8 @@ class SymbolicFourier {
     if (roots == null || roots.isEmpty) {
       return _PFRealResult.unsupported(
         inputLatex: inputLatex,
-        messageLatex: r'\text{Unsupported in current version：Failed to solve }Q(t)=0\text{ 的根。}',
+        messageLatex:
+            r'\text{Unsupported in current version：Failed to solve }Q(t)=0\text{ 的根。}',
       );
     }
 
@@ -1676,12 +1848,28 @@ class SymbolicFourier {
         final c2 = q.coeff(2);
         final scale = remainder.coeff(0) / c2; // because q = c2*(t^2 + k0)
         final term = '${_numToPlain(scale)}/(t^2+${_numToPlain(k0)})';
-        final expanded = (quotient.isZero) ? term : (quotient.toExprString() + '+' + term);
+        final expanded = (quotient.isZero)
+            ? term
+            : (quotient.toExprString() + '+' + term);
 
         final inputLatex = r'\frac{' + p.toLatex() + r'}{' + q.toLatex() + r'}';
         final decompLatex = quotient.isZero
-            ? (inputLatex + '=' + r'\frac{' + _numToLatex(scale) + r'}{t^{2}+' + _numToLatex(k0) + r'}')
-            : (inputLatex + '=' + quotient.toLatex() + '+' + r'\frac{' + _numToLatex(scale) + r'}{t^{2}+' + _numToLatex(k0) + r'}');
+            ? (inputLatex +
+                  '=' +
+                  r'\frac{' +
+                  _numToLatex(scale) +
+                  r'}{t^{2}+' +
+                  _numToLatex(k0) +
+                  r'}')
+            : (inputLatex +
+                  '=' +
+                  quotient.toLatex() +
+                  '+' +
+                  r'\frac{' +
+                  _numToLatex(scale) +
+                  r'}{t^{2}+' +
+                  _numToLatex(k0) +
+                  r'}');
 
         return _PFRealResult.ok(
           inputLatex: inputLatex,
@@ -1692,7 +1880,8 @@ class SymbolicFourier {
 
       return _PFRealResult.unsupported(
         inputLatex: _toLatexFallback(expr),
-        messageLatex: r'\text{Unsupported in current version：}Q(t)\text{ 含quadratic irreducible factor（complex conjugate roots），且不属于 }t^{2}+a^{2}\text{ 形式。}',
+        messageLatex:
+            r'\text{Unsupported in current version：}Q(t)\text{ 含quadratic irreducible factor（complex conjugate roots），且不属于 }t^{2}+a^{2}\text{ 形式。}',
       );
     }
 
@@ -1720,7 +1909,8 @@ class SymbolicFourier {
     if (err > 1e-3 * (1 + q.maxAbsCoeff)) {
       return _PFRealResult.unsupported(
         inputLatex: inputLatex,
-        messageLatex: r'\text{Unsupported in current version：}Q(t)\text{ 未能稳定分解为实线性因子。}',
+        messageLatex:
+            r'\text{Unsupported in current version：}Q(t)\text{ 未能稳定分解为实线性因子。}',
       );
     }
 
@@ -1740,7 +1930,10 @@ class SymbolicFourier {
     while (samples.length < N) {
       bool nearPole = false;
       for (final f in factors) {
-        if ((t - f.a).abs() < 1e-3) { nearPole = true; break; }
+        if ((t - f.a).abs() < 1e-3) {
+          nearPole = true;
+          break;
+        }
       }
       if (!nearPole) samples.add(t);
       t += 1.0;
@@ -1749,7 +1942,8 @@ class SymbolicFourier {
     if (samples.length < M) {
       return _PFRealResult.unsupported(
         inputLatex: inputLatex,
-        messageLatex: r'\text{Unsupported in current version：Not enough sample points to solve for coefficients。}',
+        messageLatex:
+            r'\text{Unsupported in current version：Not enough sample points to solve for coefficients。}',
       );
     }
 
@@ -1775,7 +1969,8 @@ class SymbolicFourier {
     if (coeffs == null) {
       return _PFRealResult.unsupported(
         inputLatex: inputLatex,
-        messageLatex: r'\text{Unsupported in current version：Failed to solve for coefficients。}',
+        messageLatex:
+            r'\text{Unsupported in current version：Failed to solve for coefficients。}',
       );
     }
 
@@ -1804,7 +1999,9 @@ class SymbolicFourier {
       if (k == 1) {
         termsLatex.add(r'\frac{' + cL + r'}{t' + shiftL + r'}');
       } else {
-        termsLatex.add(r'\frac{' + cL + r'}{(t' + shiftL + r')^{' + k.toString() + r'}}');
+        termsLatex.add(
+          r'\frac{' + cL + r'}{(t' + shiftL + r')^{' + k.toString() + r'}}',
+        );
       }
     }
 
@@ -1816,15 +2013,30 @@ class SymbolicFourier {
     }
 
     final expandedProper = termsExpr.join('+');
-    final properLatex = r'\frac{' + remainder.toLatex() + r'}{' + q.toLatex() + r'}=' + termsLatex.join('+');
+    final properLatex =
+        r'\frac{' +
+        remainder.toLatex() +
+        r'}{' +
+        q.toLatex() +
+        r'}=' +
+        termsLatex.join('+');
 
     if (!quotient.isZero) {
       final expanded = quotient.toExprString() + '+' + expandedProper;
-      final decomp = inputLatex + '=' + quotient.toLatex() + '+(' + properLatex + ')';
-      return _PFRealResult.ok(inputLatex: inputLatex, decomposeLatex: decomp, expandedExpr: expanded);
+      final decomp =
+          inputLatex + '=' + quotient.toLatex() + '+(' + properLatex + ')';
+      return _PFRealResult.ok(
+        inputLatex: inputLatex,
+        decomposeLatex: decomp,
+        expandedExpr: expanded,
+      );
     }
 
-    return _PFRealResult.ok(inputLatex: inputLatex, decomposeLatex: properLatex, expandedExpr: expandedProper);
+    return _PFRealResult.ok(
+      inputLatex: inputLatex,
+      decomposeLatex: properLatex,
+      expandedExpr: expandedProper,
+    );
   }
 
   static (String, String)? _splitTopLevelDivision(String expr) {
@@ -1865,6 +2077,7 @@ class SymbolicFourier {
 
     return null;
   }
+
   static String _stripOuterParen(String s) {
     var x = s.trim();
     while (x.startsWith('(') && x.endsWith(')')) {
@@ -1874,7 +2087,10 @@ class SymbolicFourier {
         final ch = x[i];
         if (ch == '(') depth++;
         if (ch == ')') depth--;
-        if (depth == 0 && i != x.length - 1) { ok = false; break; }
+        if (depth == 0 && i != x.length - 1) {
+          ok = false;
+          break;
+        }
       }
       if (!ok) break;
       x = x.substring(1, x.length - 1).trim();
@@ -1882,7 +2098,10 @@ class SymbolicFourier {
     return x;
   }
 
-  static List<double>? _solveLeastSquares(List<List<double>> A, List<double> y) {
+  static List<double>? _solveLeastSquares(
+    List<List<double>> A,
+    List<double> y,
+  ) {
     final m = A.length;
     final n = A[0].length;
     final ata = List.generate(n, (_) => List<double>.filled(n, 0.0));
@@ -1910,13 +2129,20 @@ class SymbolicFourier {
       double best = a[col][col].abs();
       for (int r = col + 1; r < n; r++) {
         final v = a[r][col].abs();
-        if (v > best) { best = v; pivot = r; }
+        if (v > best) {
+          best = v;
+          pivot = r;
+        }
       }
       if (best < 1e-12) return null;
 
       if (pivot != col) {
-        final tmp = a[pivot]; a[pivot] = a[col]; a[col] = tmp;
-        final tb = x[pivot]; x[pivot] = x[col]; x[col] = tb;
+        final tmp = a[pivot];
+        a[pivot] = a[col];
+        a[col] = tmp;
+        final tb = x[pivot];
+        x[pivot] = x[col];
+        x[col] = tb;
       }
 
       final diag = a[col][col];
@@ -1935,7 +2161,8 @@ class SymbolicFourier {
   }
 
   static String _numToPlain(double x) {
-    if ((x - x.roundToDouble()).abs() < 1e-10) return x.round().toInt().toString();
+    if ((x - x.roundToDouble()).abs() < 1e-10)
+      return x.round().toInt().toString();
     var s = x.toStringAsPrecision(12);
     s = s.replaceAll(RegExp(r'0+$'), '');
     s = s.replaceAll(RegExp(r'\.$'), '');
@@ -1988,7 +2215,6 @@ class SymbolicFourier {
   }
 }
 
-
 // Helper structs
 
 // PF + Polynomial utilities
@@ -2012,23 +2238,21 @@ class _PFRealResult {
     required String inputLatex,
     required String decomposeLatex,
     required String expandedExpr,
-  }) =>
-      _PFRealResult._(
-        ok: true,
-        inputLatex: inputLatex,
-        decomposeLatex: decomposeLatex,
-        expandedExpr: expandedExpr,
-      );
+  }) => _PFRealResult._(
+    ok: true,
+    inputLatex: inputLatex,
+    decomposeLatex: decomposeLatex,
+    expandedExpr: expandedExpr,
+  );
 
   factory _PFRealResult.unsupported({
     required String inputLatex,
     required String messageLatex,
-  }) =>
-      _PFRealResult._(
-        ok: false,
-        inputLatex: inputLatex,
-        messageLatex: messageLatex,
-      );
+  }) => _PFRealResult._(
+    ok: false,
+    inputLatex: inputLatex,
+    messageLatex: messageLatex,
+  );
 }
 
 class _RealRootFactor {
@@ -2119,7 +2343,10 @@ class _Poly {
   }
 
   _Poly mul(_Poly other) {
-    final out = List<double>.filled(coeffs.length + other.coeffs.length - 1, 0.0);
+    final out = List<double>.filled(
+      coeffs.length + other.coeffs.length - 1,
+      0.0,
+    );
     for (int i = 0; i < coeffs.length; i++) {
       for (int j = 0; j < other.coeffs.length; j++) {
         out[i + j] += coeffs[i] * other.coeffs[j];
@@ -2143,7 +2370,7 @@ class _Poly {
     return r._trim();
   }
 
-  ( _Poly, _Poly ) divmod(_Poly divisor) {
+  (_Poly, _Poly) divmod(_Poly divisor) {
     if (divisor.isZero) throw ArgumentError('divide by zero poly');
     var a = List<double>.from(coeffs);
     final b = divisor._trim().coeffs;
@@ -2192,11 +2419,14 @@ class _Poly {
     return m;
   }
 
-  static _Poly fromRealRootFactors(List<_RealRootFactor> factors, {required double leading}) {
+  static _Poly fromRealRootFactors(
+    List<_RealRootFactor> factors, {
+    required double leading,
+  }) {
     var p = _Poly(const [1.0]);
     for (final f in factors) {
       // (t - a)^m
-      final base = _Poly([ -f.a, 1.0 ]);
+      final base = _Poly([-f.a, 1.0]);
       p = p.mul(base.powInt(f.m));
     }
     return p.scale(leading);
@@ -2215,11 +2445,15 @@ class _Poly {
       if (i == 0) {
         term = _latexNum(absC);
       } else if (i == 1) {
-        if ((absC - 1.0).abs() < 1e-12) term = 't';
-        else term = _latexNum(absC) + 't';
+        if ((absC - 1.0).abs() < 1e-12)
+          term = 't';
+        else
+          term = _latexNum(absC) + 't';
       } else {
-        if ((absC - 1.0).abs() < 1e-12) term = 't^{${i}}';
-        else term = _latexNum(absC) + 't^{${i}}';
+        if ((absC - 1.0).abs() < 1e-12)
+          term = 't^{${i}}';
+        else
+          term = _latexNum(absC) + 't^{${i}}';
       }
       parts.add((parts.isEmpty && sign == '+') ? term : sign + term);
     }
@@ -2239,11 +2473,15 @@ class _Poly {
       if (i == 0) {
         term = _plainNum(absC);
       } else if (i == 1) {
-        if ((absC - 1.0).abs() < 1e-12) term = 't';
-        else term = '${_plainNum(absC)}*t';
+        if ((absC - 1.0).abs() < 1e-12)
+          term = 't';
+        else
+          term = '${_plainNum(absC)}*t';
       } else {
-        if ((absC - 1.0).abs() < 1e-12) term = 't^$i';
-        else term = '${_plainNum(absC)}*t^$i';
+        if ((absC - 1.0).abs() < 1e-12)
+          term = 't^$i';
+        else
+          term = '${_plainNum(absC)}*t^$i';
       }
       parts.add((parts.isEmpty && sign == '+') ? term : sign + term);
     }
@@ -2251,7 +2489,8 @@ class _Poly {
   }
 
   static String _plainNum(double x) {
-    if ((x - x.roundToDouble()).abs() < 1e-10) return x.round().toInt().toString();
+    if ((x - x.roundToDouble()).abs() < 1e-10)
+      return x.round().toInt().toString();
     var s = x.toStringAsPrecision(12);
     s = s.replaceAll(RegExp(r'0+$'), '');
     s = s.replaceAll(RegExp(r'\.$'), '');
@@ -2259,7 +2498,6 @@ class _Poly {
   }
 
   static String _latexNum(double x) => _plainNum(x);
-
 
   // Implicit multiplication supported: 2t, t(t+1), (t+1)(t-1), 2(t+1)
   static _Poly? parse(String expr) {
@@ -2295,14 +2533,45 @@ class _PolyLexer {
     final out = <_Tok>[];
     while (!done) {
       final ch = s[i];
-      if (ch == ' ' || ch == '\n' || ch == '\t') { i++; continue; }
-      if (ch == '+') { out.add(const _Tok(_TokType.plus, '+')); i++; continue; }
-      if (ch == '-') { out.add(const _Tok(_TokType.minus, '-')); i++; continue; }
-      if (ch == '*') { out.add(const _Tok(_TokType.mul, '*')); i++; continue; }
-      if (ch == '^') { out.add(const _Tok(_TokType.pow, '^')); i++; continue; }
-      if (ch == '(') { out.add(const _Tok(_TokType.lpar, '(')); i++; continue; }
-      if (ch == ')') { out.add(const _Tok(_TokType.rpar, ')')); i++; continue; }
-      if (ch == 't') { out.add(const _Tok(_TokType.t, 't')); i++; continue; }
+      if (ch == ' ' || ch == '\n' || ch == '\t') {
+        i++;
+        continue;
+      }
+      if (ch == '+') {
+        out.add(const _Tok(_TokType.plus, '+'));
+        i++;
+        continue;
+      }
+      if (ch == '-') {
+        out.add(const _Tok(_TokType.minus, '-'));
+        i++;
+        continue;
+      }
+      if (ch == '*') {
+        out.add(const _Tok(_TokType.mul, '*'));
+        i++;
+        continue;
+      }
+      if (ch == '^') {
+        out.add(const _Tok(_TokType.pow, '^'));
+        i++;
+        continue;
+      }
+      if (ch == '(') {
+        out.add(const _Tok(_TokType.lpar, '('));
+        i++;
+        continue;
+      }
+      if (ch == ')') {
+        out.add(const _Tok(_TokType.rpar, ')'));
+        i++;
+        continue;
+      }
+      if (ch == 't') {
+        out.add(const _Tok(_TokType.t, 't'));
+        i++;
+        continue;
+      }
 
       // number (supports decimal)
       if (RegExp(r'[0-9\.]').hasMatch(ch)) {
@@ -2335,9 +2604,13 @@ class _PolyLexer {
   // Insert '*' when two factors are adjacent: num t, num (, t (, ) t, ) (, etc.
   List<_Tok> _insertImplicitMul(List<_Tok> toks) {
     bool isFactorEnd(_Tok t) =>
-        t.type == _TokType.num || t.type == _TokType.t || t.type == _TokType.rpar;
+        t.type == _TokType.num ||
+        t.type == _TokType.t ||
+        t.type == _TokType.rpar;
     bool isFactorStart(_Tok t) =>
-        t.type == _TokType.num || t.type == _TokType.t || t.type == _TokType.lpar;
+        t.type == _TokType.num ||
+        t.type == _TokType.t ||
+        t.type == _TokType.lpar;
 
     final out = <_Tok>[];
     for (int k = 0; k < toks.length; k++) {
@@ -2370,7 +2643,10 @@ class _PolyParser {
   }
 
   bool match(_TokType t) {
-    if (cur.type == t) { p++; return true; }
+    if (cur.type == t) {
+      p++;
+      return true;
+    }
     return false;
   }
 
@@ -2405,10 +2681,12 @@ class _PolyParser {
     if (match(_TokType.pow)) {
       // exponent must be integer number
       final expTok = cur;
-      if (expTok.type != _TokType.num) throw FormatException('power exponent must be number');
+      if (expTok.type != _TokType.num)
+        throw FormatException('power exponent must be number');
       eat(_TokType.num);
       final n = int.tryParse(expTok.text);
-      if (n == null || n < 0) throw FormatException('power exponent must be nonnegative int');
+      if (n == null || n < 0)
+        throw FormatException('power exponent must be nonnegative int');
       x = x.powInt(n);
     }
     return x;
@@ -2436,6 +2714,7 @@ class _PolyParser {
     throw FormatException('bad primary');
   }
 }
+
 class _InvT2A2 {
   final String inputLatex;
   final double? aNumeric;
@@ -2454,7 +2733,9 @@ class _InvT2A2 {
 double? _matchInvPerfectSquareQuadraticShift(String expr) {
   // Matches: 1/(t^2 + b*t + c) where b,c are numeric, and allows optional '*' between b and t.
   final s = expr.replaceAll(' ', '');
-  final m = RegExp(r'^1/\(t\^2([+-]\d+(?:\.\d+)?)\*?t([+-]\d+(?:\.\d+)?)\)$').firstMatch(s);
+  final m = RegExp(
+    r'^1/\(t\^2([+-]\d+(?:\.\d+)?)\*?t([+-]\d+(?:\.\d+)?)\)$',
+  ).firstMatch(s);
   if (m == null) return null;
   final b = double.tryParse(m.group(1)!);
   final c = double.tryParse(m.group(2)!);
@@ -2464,13 +2745,16 @@ double? _matchInvPerfectSquareQuadraticShift(String expr) {
   return b / 2.0;
 }
 
-
 _ConstMatch? _matchConstant(String expr) {
   final s = expr.trim();
   if (s.isEmpty) return null;
 
   if (s == 'pi') {
-    return const _ConstMatch(inputLatex: r'\pi', coeffLatex: r'\pi', isZero: false);
+    return const _ConstMatch(
+      inputLatex: r'\pi',
+      coeffLatex: r'\pi',
+      isZero: false,
+    );
   }
 
   final v = double.tryParse(s);
@@ -2485,13 +2769,15 @@ _ConstMatch? _matchConstant(String expr) {
   return null;
 }
 
-
-
 class _ConstMatch {
   final String inputLatex;
   final String coeffLatex;
   final bool isZero;
-  const _ConstMatch({required this.inputLatex, required this.coeffLatex, required this.isZero});
+  const _ConstMatch({
+    required this.inputLatex,
+    required this.coeffLatex,
+    required this.isZero,
+  });
 }
 
 class _Group {
@@ -2506,12 +2792,15 @@ class _SignedShift {
   const _SignedShift(this.sign, this.a);
 }
 
-
 class _PerfectSquareExpanded {
   final double shift;
   final double b;
   final double c;
-  const _PerfectSquareExpanded({required this.shift, required this.b, required this.c});
+  const _PerfectSquareExpanded({
+    required this.shift,
+    required this.b,
+    required this.c,
+  });
 }
 
 class _InvShiftPow {
@@ -2565,7 +2854,8 @@ class _Trig {
       final ch = x[i];
       if (ch == '(') depth++;
       if (ch == ')') depth--;
-      if (depth == 0 && i != x.length - 1) return x; // outer parens do not wrap all
+      if (depth == 0 && i != x.length - 1)
+        return x; // outer parens do not wrap all
     }
     return x.substring(1, x.length - 1).trim();
   }
