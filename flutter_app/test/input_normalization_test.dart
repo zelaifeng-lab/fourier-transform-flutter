@@ -14,6 +14,12 @@ void main() {
     );
   });
 
+  test('keeps sign rect and tri as function calls', () {
+    expect(normalizeInputExpression('2sign(t-1)'), '2*sign(t-1)');
+    expect(normalizeInputExpression('rect((t-2)/3)'), 'rect((t-2)/3)');
+    expect(normalizeInputExpression('3tri((t+2)/4)'), '3*tri((t+2)/4)');
+  });
+
   test('normalizes convolution operator variants to bullet', () {
     expect(normalizeInputExpression('u(t)\u2022u(t)'), 'u(t)\u2022u(t)');
     expect(normalizeInputExpression('u(t)\u00B7u(t)'), 'u(t)\u2022u(t)');

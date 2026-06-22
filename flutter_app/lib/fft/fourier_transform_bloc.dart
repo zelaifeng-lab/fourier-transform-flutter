@@ -157,6 +157,9 @@ bool _isFuncName(String id) {
     'cosh',
     'exp',
     'abs',
+    'sign',
+    'rect',
+    'tri',
     'u',
     'heaviside',
     'delta',
@@ -516,7 +519,7 @@ List<_C> _circularConvolutionC(List<_C> f, List<_C> g, double dt) {
 
 /// =======================
 /// Parser -> AST -> array evaluation
-/// Supports: + - * / ^ ( ) , sin cos exp u delta
+/// Supports: + - * / ^ ( ) , sin cos exp sign rect tri u delta
 /// Convolution operator: '•'
 /// Fraction function: frac(x,y)  (pointwise division)
 /// Variables: t, a; constants: pi, e
@@ -685,6 +688,23 @@ class _Func1 extends _Node {
       case 'abs':
         // abs(z): magnitude for complex, |x| for real.
         for (int i = 0; i < n; i++) out[i] = _C(x[i].abs(), 0);
+        break;
+      case 'sign':
+        for (int i = 0; i < n; i++) {
+          final v = x[i].re;
+          out[i] = _C(v > 0 ? 1 : (v < 0 ? -1 : 0), 0);
+        }
+        break;
+      case 'rect':
+        for (int i = 0; i < n; i++) {
+          out[i] = x[i].re.abs() <= 0.5 ? const _C(1, 0) : const _C(0, 0);
+        }
+        break;
+      case 'tri':
+        for (int i = 0; i < n; i++) {
+          final v = 1.0 - x[i].re.abs();
+          out[i] = _C(v > 0 ? v : 0, 0);
+        }
         break;
       case 'u':
         for (int i = 0; i < n; i++)

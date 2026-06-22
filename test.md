@@ -26,7 +26,9 @@ Assumptions:
 | B06 | `u(t)` | `pi*delta(omega) - I*PV(1/omega)` | true | Heaviside step |
 | B07 | `u(t-2)` | `exp(-I*2*omega)*(pi*delta(omega)-I*PV(1/omega))` | true | Shifted step |
 | B08 | `u(t+1)` | `exp(I*omega)*(pi*delta(omega)-I*PV(1/omega))` | true | Shifted step |
-| B09 | `sign(t)` | `2/(I*omega)` or `-2*I*PV(1/omega)` | false | Common future rule |
+| B09 | `sign(t)` | `-2*I*PV(1/omega)` | true | Sign distribution pair |
+| B10 | `sign(t-2)` | `exp(-2*I*omega)*(-2*I*PV(1/omega))` | true | Shifted sign distribution |
+| B11 | `sign(-3*(t+1))` | `exp(I*omega)*(2*I*PV(1/omega))` | true | Negative scale plus time shift |
 
 ## 2. Polynomial Test Data
 
@@ -60,6 +62,9 @@ Polynomial times step rule:
 | PU03 | `t^3*u(t)` | `-I*pi*delta'''(omega) + 6*PV(1/omega^4)` | true | Polynomial step |
 | PU04 | `2*t*u(t)` | `2*I*pi*delta'(omega) - 2*PV(1/omega^2)` | true | Constant multiplier |
 | PU05 | `(t^2+2*t+1)*u(t)` | Expanded linear combination of `t^2*u(t)`, `2*t*u(t)`, and `u(t)` | true | Polynomial expansion |
+| PU06 | `(t-2)*u(t-2)` | Shifted `t*u(t)` result: multiply the origin polynomial-step transform by `exp(-2*I*omega)` | true | Reuse shifted step helper; no direct integral |
+| PU07 | `t*u(t-2)` | Rewrite with `s=t-2`, so `t=s+2`; combine `s*u(s)` and `u(s)` then time shift | true | Shifted polynomial-step expansion |
+| PU08 | `(t+3)^2*u(t+3)` | Shifted `t^2*u(t)` result with factor `exp(3*I*omega)` | true | Shifted polynomial-step rule |
 
 ## 3. Exponential Signals
 
@@ -122,8 +127,10 @@ Polynomial times step rule:
 |---|---|---|---|---|
 | W01 | `u(t-2)-u(t-5)` | `(exp(-I*2*omega)-exp(-I*5*omega))/(I*omega)` | true | Finite window |
 | W02 | `u(t+1)-u(t-1)` | `2*sin(omega)/omega` | true | Symmetric rectangular window |
-| W03 | `rect(t)` | `sin(omega/2)/(omega/2)` | false | Future rect rule |
-| W04 | `rect(t/2)` | `2*sin(omega)/omega` | false | Future scaling rule |
+| W03 | `rect((t-2)/3)` | `exp(-2*I*omega)*2*sin(3*omega/2)/omega` | true | Shifted and scaled rectangular pulse |
+| W04 | `4*rect((t+1)/2)` | `4*exp(I*omega)*2*sin(omega)/omega` | true | Amplitude, shift, and width scaling |
+| W09 | `tri((t-1)/2)` | `2*exp(-I*omega)*(sin(omega)/omega)^2` | true | Shifted and scaled triangular pulse |
+| W10 | `3*tri((t+2)/4)` | `3*exp(2*I*omega)*sin(2*omega)^2/omega^2` | true | Amplitude, shift, and width scaling |
 | W05 | `frac(sin(t),pi*t)` | `1 for abs(omega)<1` | false | Future sinc rule |
 | W06 | `frac(sin(3*t),pi*t)` | `1 for abs(omega)<3` | false | Future sinc rule |
 | W07 | `frac(sin(t),t)` | `pi for abs(omega)<1` | false | Future sinc rule |

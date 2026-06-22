@@ -309,6 +309,9 @@ def _apart_real_roots(expr):
 class Rect(Function):
     nargs = 1
 
+class Tri(Function):
+    nargs = 1
+
 # PV(x): principal value marker (display only)
 class PV(Function):
     nargs = 1
@@ -389,6 +392,7 @@ def _pre_normalize(s: str) -> str:
 
     # frac(a,b)
     s = s.replace("rect(", "Rect(")
+    s = s.replace("tri(", "Tri(")
     s = s.replace("frac(", "FRAC(")
     s = _convert_frac_calls(s)
     return s
@@ -409,8 +413,11 @@ def _parse_sympy(expr_str: str):
         "Abs": Abs,
         "sign": sign,
         "Rect": Rect,
+        "Tri": Tri,
     }
     expr = parse_expr(expr_str, local_dict=local_dict, transformations=TRANSFORMS, evaluate=True)
+    if expr.has(sign) or expr.has(Rect) or expr.has(Tri):
+        return expr
     return simplify(expr)
 
 
@@ -579,6 +586,7 @@ def _format_result_display_latex(text: str) -> str:
     s = s.replace(r"\left|{\omega}\right|", r"|\omega|")
     s = s.replace(r"\operatorname{sign}{\left(\omega \right)}", r"\mathrm{sign}(\omega)")
     pv_terms = [
+        r"\omega",
         r"\omega^{2}",
         r"\omega^{3}",
         r"\omega^{4}",
@@ -1187,6 +1195,138 @@ def _rule_abs_exponential(f):
     return "closed_form", True, X, steps, r"a>0", None
 
 
+def _extract_single_function_factor(f, func):
+    """Return (constant_coeff, func_call) for coeff*func(arg), if present."""
+    if getattr(f, "func", None) == func:
+        return 1, f
+    if isinstance(f, Mul):
+        matches = [arg for arg in f.args if getattr(arg, "func", None) == func]
+        if len(matches) != 1:
+            return None
+        core = matches[0]
+        coeff = simplify(f / core)
+        if coeff.has(t):
+            return None
+        return coeff, core
+    return None
+
+
+def _positive_linear_scale(a):
+    """Return (positive_width, sign(a)) for a real nonzero numeric/symbolic linear coefficient."""
+    try:
+        a = simplify(a)
+        if simplify(a) == 0:
+            return None
+        if getattr(a, "is_positive", None) is True:
+            return simplify(1/a), 1
+        if getattr(a, "is_negative", None) is True:
+            return simplify(-1/a), -1
+        if getattr(a, "is_number", False):
+            av = float(N(a))
+            if av > 0:
+                return simplify(1/a), 1
+            if av < 0:
+                return simplify(-1/a), -1
+    except Exception:
+        return None
+    return None
+
+
+def _linear_center_and_width(arg):
+    """For arg=a*t+b, return (center c=-b/a, width=1/|a|, sign(a))."""
+    lin = _as_linear_in_t(arg)
+    if lin is None:
+        return None
+    a, b = lin
+    scale = _positive_linear_scale(a)
+    if scale is None:
+        return None
+    width, sign_a = scale
+    center = simplify(-b/a)
+    return center, width, sign_a
+
+
+def _rule_sign_distribution(f):
+    extracted = _extract_single_function_factor(f, sign)
+    if extracted is None:
+        return None
+    coeff, core = extracted
+    if len(core.args) != 1:
+        return None
+    params = _linear_center_and_width(core.args[0])
+    if params is None:
+        return None
+    c, _width, sign_a = params
+    X = coeff * sign_a * exp(-I*omega*c) * (-2*I) * PV(1/omega)
+    X = _omega_real_cleanup(X)
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify the shifted sign signal}",
+        r"\operatorname{sign}(a(t-c))=\operatorname{sign}(a)\operatorname{sign}(t-c)",
+        r"a=" + latex(_as_linear_in_t(core.args[0])[0]) + r",\quad c=" + latex(c),
+        r"\textbf{Step 3: Use the sign transform pair}",
+        r"\mathcal{F}\{\operatorname{sign}(t)\}=\frac{2}{j\omega}=-2j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\text{PV appears because }\operatorname{sign}(t)\text{ is interpreted as a distribution.}",
+        r"\textbf{Step 4: Apply the time-shift and scale factors}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+    ]
+    steps += _step_final_result(X)
+    return "distribution_form", True, X, steps, "", None
+
+
+def _rule_rect_distribution(f):
+    extracted = _extract_single_function_factor(f, Rect)
+    if extracted is None:
+        return None
+    coeff, core = extracted
+    if len(core.args) != 1:
+        return None
+    params = _linear_center_and_width(core.args[0])
+    if params is None:
+        return None
+    c, width, _sign_a = params
+    X = coeff * exp(-I*omega*c) * (2*sin(omega*width/2)/omega)
+    X = _omega_real_cleanup(X)
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify the shifted and scaled rectangular pulse}",
+        r"\operatorname{rect}\!\left(\frac{t-c}{T}\right),\quad c=" + latex(c) + r",\quad T=" + latex(width),
+        r"\textbf{Step 3: Use the rectangular-pulse transform pair}",
+        r"\mathcal{F}\{\operatorname{rect}(t/T)\}=\frac{2\sin(\omega T/2)}{\omega}",
+        r"\textbf{Step 4: Apply the time-shift property}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+    ]
+    steps += _step_final_result(X)
+    return "closed_form", True, X, steps, "", None
+
+
+def _rule_tri_distribution(f):
+    extracted = _extract_single_function_factor(f, Tri)
+    if extracted is None:
+        return None
+    coeff, core = extracted
+    if len(core.args) != 1:
+        return None
+    params = _linear_center_and_width(core.args[0])
+    if params is None:
+        return None
+    c, width, _sign_a = params
+    sinc_part = sin(omega*width/2)/(omega*width/2)
+    X = coeff * exp(-I*omega*c) * width * sinc_part**2
+    X = _omega_real_cleanup(X)
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify the shifted and scaled triangular pulse}",
+        r"\operatorname{tri}\!\left(\frac{t-c}{T}\right),\quad c=" + latex(c) + r",\quad T=" + latex(width),
+        r"\textbf{Step 3: Use the triangular-pulse transform pair}",
+        r"\mathcal{F}\{\operatorname{tri}(t/T)\}=T\left(\frac{\sin(\omega T/2)}{\omega T/2}\right)^2",
+        r"\textbf{Step 4: Apply the time-shift property}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+    ]
+    steps += _step_final_result(X)
+    return "closed_form", True, X, steps, "", None
+
+
 # ---------- main derivation ----------
 
 def _derive_with_properties(f):
@@ -1196,6 +1336,18 @@ def _derive_with_properties(f):
     """
 
     # 0) Trig-first policy (user request)
+
+    sign_res = _rule_sign_distribution(f)
+    if sign_res is not None:
+        return sign_res
+
+    rect_res = _rule_rect_distribution(f)
+    if rect_res is not None:
+        return rect_res
+
+    tri_res = _rule_tri_distribution(f)
+    if tri_res is not None:
+        return tri_res
 
     finite_window_res = _rule_finite_step_window(f)
     if finite_window_res is not None:
@@ -1216,6 +1368,10 @@ def _derive_with_properties(f):
     abs_exp_res = _rule_abs_exponential(f)
     if abs_exp_res is not None:
         return abs_exp_res
+
+    shifted_poly_step_res = _rule_shifted_poly_times_step_distribution(f)
+    if shifted_poly_step_res is not None:
+        return shifted_poly_step_res
 
     poly_step_res = _rule_poly_times_step_distribution(f)
 
@@ -1912,23 +2068,9 @@ def _rule_damped_oscillation(f):
 
 
 
-def _rule_poly_times_step_distribution(f):
-    """
-    Explicit distribution for t^n * Heaviside(t):
-      F{t^n u(t)} = 蟺 j^n 未^{(n)}(蠅) + (-1)^n j^{n-1} n! PV(1/蠅^{n+1})
-    """
-    if not (isinstance(f, Mul) and f.has(Heaviside)):
-        return None
 
-    h_t = None
-    for h in f.atoms(Heaviside):
-        if len(h.args) >= 1 and simplify(h.args[0] - t) == 0:
-            h_t = h
-            break
-    if h_t is None:
-        return None
-
-    g = expand(simplify(f / h_t))
+def _polynomial_step_distribution_from_poly(g):
+    g = expand(simplify(g))
     if not g.is_polynomial(t):
         return None
 
@@ -1956,7 +2098,76 @@ def _rule_poly_times_step_distribution(f):
     if not pieces:
         return None
 
-    X = Add(*pieces, evaluate=False)
+    return Add(*pieces, evaluate=False), sorted(degree_values)
+
+
+def _rule_shifted_poly_times_step_distribution(f):
+    """
+    Distribution rule for p(t)u(t-c). Let s=t-c, derive p(s+c)u(s)
+    with the polynomial-step basis, then apply time shift.
+    """
+    if not (isinstance(f, Mul) and f.has(Heaviside)):
+        return None
+
+    h_t = None
+    c = None
+    for h in f.atoms(Heaviside):
+        if len(h.args) < 1:
+            continue
+        shift = _match_heaviside_shift(h)
+        if shift is not None and simplify(shift) != 0:
+            h_t = h
+            c = simplify(shift)
+            break
+    if h_t is None:
+        return None
+
+    rest = simplify(f / h_t)
+    shifted_poly = expand(simplify(rest.subs(t, t + c)))
+    base = _polynomial_step_distribution_from_poly(shifted_poly)
+    if base is None:
+        return None
+    Y, degree_values = base
+    X = simplify(exp(-I*omega*c) * Y)
+
+    steps = _step_start_definition(f)
+    steps += [
+        r"\textbf{Step 2: Identify a shifted polynomial multiplied by a shifted unit step}",
+        r"x(t)=p(t)u(t-c),\quad c=" + latex(c),
+        r"\textbf{Step 3: Move the step edge to the origin}",
+        r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)\text{ and }t=s+c",
+        r"p(t)\rightarrow p(s+c)=" + latex(shifted_poly),
+        r"\text{For this input, use }n\in\{" + ",".join(str(n) for n in degree_values) + r"\}\text{ term by term.}",
+        r"\textbf{Step 4: Reuse the polynomial-step transform pair at the origin}",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\textbf{Step 5: Apply the time-shift property}",
+        r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+    ]
+    steps += _step_final_result(X)
+    return ("distribution_form", True, X, steps, "", None)
+
+
+def _rule_poly_times_step_distribution(f):
+    """
+    Explicit distribution for t^n * Heaviside(t):
+      F{t^n u(t)} = 蟺 j^n 未^{(n)}(蠅) + (-1)^n j^{n-1} n! PV(1/蠅^{n+1})
+    """
+    if not (isinstance(f, Mul) and f.has(Heaviside)):
+        return None
+
+    h_t = None
+    for h in f.atoms(Heaviside):
+        if len(h.args) >= 1 and simplify(h.args[0] - t) == 0:
+            h_t = h
+            break
+    if h_t is None:
+        return None
+
+    g = expand(simplify(f / h_t))
+    base = _polynomial_step_distribution_from_poly(g)
+    if base is None:
+        return None
+    X, degree_values = base
     steps = [
         r"\textbf{Method: Distribution rule (polynomial 脳 step)}",
         r"x(t)=p(t)u(t),\;p(t)=" + latex(g),

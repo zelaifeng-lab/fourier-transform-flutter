@@ -39,6 +39,9 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("B06", "u(t)", "basic", ("pi", "delta", "omega"), expected_result_latex=r"\pi \delta\left(\omega\right) - \frac{j}{\omega}"),
     FourierCase("B07", "u(t-2)", "basic", ("e", "2", "omega", "delta"), expected_result_latex=r"\left(\pi \delta\left(\omega\right) - \frac{j}{\omega}\right) e^{- 2 j \omega}"),
     FourierCase("B08", "u(t+1)", "basic", ("e", "omega", "delta"), expected_result_latex=r"\left(\pi \delta\left(\omega\right) - \frac{j}{\omega}\right) e^{j \omega}"),
+    FourierCase("B09", "sign(t)", "sign_distribution", ("PV", "omega"), expected_result_latex=r"- 2 j \mathrm{PV}\frac{1}{\omega}"),
+    FourierCase("B10", "sign(t-2)", "sign_distribution", ("PV", "omega", "e"), expected_result_latex=r"- 2 j e^{- 2 j \omega} \mathrm{PV}\frac{1}{\omega}"),
+    FourierCase("B11", "sign(-3*(t+1))", "sign_distribution", ("PV", "omega", "e"), expected_result_latex=r"2 j e^{j \omega} \mathrm{PV}\frac{1}{\omega}"),
     FourierCase("P01", "t", "polynomial", ("delta", "omega"), expected_result_latex=r"2 j \pi \delta^{(1)}(\omega)"),
     FourierCase("P02", "t^2", "polynomial", ("delta", "omega"), expected_result_latex=r"- 2 \pi \delta^{(2)}(\omega)"),
     FourierCase("P03", "t^3", "polynomial", ("delta", "omega"), expected_result_latex=r"- 2 j \pi \delta^{(3)}(\omega)"),
@@ -50,6 +53,42 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("PU03", "t^3*u(t)", "polynomial_step", ("PV", "omega"), expected_result_latex=r"- j \pi \delta^{(3)}(\omega) + 6 \mathrm{PV}\frac{1}{\omega^{4}}"),
     FourierCase("PU04", "2*t*u(t)", "polynomial_step", ("PV", "omega"), expected_result_latex=r"2 j \pi \delta^{(1)}(\omega) - 2 \mathrm{PV}\frac{1}{\omega^{2}}"),
     FourierCase("PU05", "(t^2+2*t+1)*u(t)", "polynomial_step", ("PV", "omega"), expected_result_latex=r"\left(\pi \delta\left(\omega\right) - \frac{j}{\omega}\right) - \left(\pi \delta^{(2)}(\omega) - 2 j \mathrm{PV}\frac{1}{\omega^{3}}\right) + \left(2 j \pi \delta^{(1)}(\omega) - 2 \mathrm{PV}\frac{1}{\omega^{2}}\right)"),
+    FourierCase(
+        "PU06",
+        "(t-2)*u(t-2)",
+        "shifted_polynomial_step",
+        ("PV", "delta", "omega", "e"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a shifted polynomial multiplied by a shifted unit step}",
+            r"c=2",
+            r"p(t)\rightarrow p(s+c)=t",
+            r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
+        ),
+    ),
+    FourierCase(
+        "PU07",
+        "t*u(t-2)",
+        "shifted_polynomial_step",
+        ("PV", "delta", "omega", "e"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a shifted polynomial multiplied by a shifted unit step}",
+            r"c=2",
+            r"p(t)\rightarrow p(s+c)=t + 2",
+            r"n\in\{0,1\}",
+        ),
+    ),
+    FourierCase(
+        "PU08",
+        "(t+3)^2*u(t+3)",
+        "shifted_polynomial_step",
+        ("PV", "delta", "omega", "e"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a shifted polynomial multiplied by a shifted unit step}",
+            r"c=-3",
+            r"p(t)\rightarrow p(s+c)=t^{2}",
+            r"n\in\{2\}",
+        ),
+    ),
     FourierCase("E01", "exp(I*3*t)", "exponential", ("delta", "omega", "3"), expected_result_latex=r"2 \pi \delta\left(\omega - 3\right)"),
     FourierCase("E02", "exp(-I*2*t)", "exponential", ("delta", "omega", "2"), expected_result_latex=r"2 \pi \delta\left(\omega + 2\right)"),
     FourierCase("E03", "exp(I*(5*t+2))", "exponential", ("delta", "omega", "5"), expected_result_latex=r"2 \pi e^{2 j} \delta\left(\omega - 5\right)"),
@@ -172,6 +211,10 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("R11", "frac(t^2（t+1）,t^3(t+1))", "rational_pv", ("sign", "omega"), expected_result_latex=r"-j\pi\,\mathrm{sign}(\omega)"),
     FourierCase("W01", "u(t-2)-u(t-5)", "window", ("omega",), expected_result_latex=r"- \frac{j \left(e^{- 2 j \omega} - e^{- 5 j \omega}\right)}{\omega}"),
     FourierCase("W02", "u(t+1)-u(t-1)", "window", ("omega",), expected_result_latex=r"- \frac{j \left(e^{j \omega} - e^{- j \omega}\right)}{\omega}"),
+    FourierCase("W03", "rect((t-2)/3)", "rect_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{2 e^{- 2 j \omega} \sin{\left(\frac{3 \omega}{2} \right)}}{\omega}"),
+    FourierCase("W04", "4*rect((t+1)/2)", "rect_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{8 e^{j \omega} \sin{\left(\omega \right)}}{\omega}"),
+    FourierCase("W09", "tri((t-1)/2)", "tri_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{2 e^{- j \omega} \sin^{2}{\left(\omega \right)}}{\omega^{2}}"),
+    FourierCase("W10", "3*tri((t+2)/4)", "tri_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{3 e^{2 j \omega} \sin^{2}{\left(2 \omega \right)}}{\omega^{2}}"),
 )
 
 
@@ -179,13 +222,10 @@ KNOWN_GAP_CASES: tuple[FourierCase, ...] = ()
 
 
 FUTURE_CASES: tuple[FourierCase, ...] = (
-    FourierCase("B09", "sign(t)", "future_distribution", implemented=False),
     FourierCase("E07", "exp(-a*t)*u(t)", "future_parameter", implemented=False),
     FourierCase("E08", "exp(-a*abs(t))", "future_parameter", implemented=False),
     FourierCase("R12", "frac(1,t^2)", "future_distribution", implemented=False),
     FourierCase("R13", "frac(1,(t+2)^2)", "future_distribution", implemented=False),
-    FourierCase("W03", "rect(t)", "future_rect", implemented=False),
-    FourierCase("W04", "rect(t/2)", "future_rect", implemented=False),
     FourierCase("W05", "frac(sin(t),pi*t)", "future_sinc", implemented=False),
     FourierCase("W06", "frac(sin(3*t),pi*t)", "future_sinc", implemented=False),
     FourierCase("W07", "frac(sin(t),t)", "future_sinc", implemented=False),

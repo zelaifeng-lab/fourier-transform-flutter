@@ -68,17 +68,17 @@ void main() {
     await tester.pumpWidget(const AppRoot());
     await tester.pump();
 
-    expect(find.textContaining('Example 3/43'), findsOneWidget);
+    expect(find.textContaining('Example 3/46'), findsOneWidget);
     expect(_currentExampleFormula('u(t)'), findsOneWidget);
 
     await tester.tap(find.text('Next'));
     await tester.pump();
-    expect(find.textContaining('Example 4/43'), findsOneWidget);
+    expect(find.textContaining('Example 4/46'), findsOneWidget);
     expect(_currentExampleFormula('u(t-2)'), findsOneWidget);
 
     await tester.tap(find.text('Previous'));
     await tester.pump();
-    expect(find.textContaining('Example 3/43'), findsOneWidget);
+    expect(find.textContaining('Example 3/46'), findsOneWidget);
     expect(_currentExampleFormula('u(t)'), findsOneWidget);
   });
 

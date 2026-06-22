@@ -108,6 +108,30 @@ class _HomePageState extends State<HomePage> {
       description: 'Demonstrates a negative time shift.',
     ),
     FourierExample(
+      expression: 'sign(t-2)',
+      title: 'Shifted sign',
+      category: 'PV distribution',
+      inputLatex: r'\operatorname{sign}(t-2)',
+      transformLatex: r'e^{-j2\omega}\left(-2j\,\mathrm{PV}\frac{1}{\omega}\right)',
+      description: 'Uses the shifted sign distribution pair.',
+    ),
+    FourierExample(
+      expression: 'rect((t-2)/3)',
+      title: 'Shifted rectangular pulse',
+      category: 'Window',
+      inputLatex: r'\operatorname{rect}\left(\frac{t-2}{3}\right)',
+      transformLatex: r'e^{-j2\omega}\frac{2\sin(3\omega/2)}{\omega}',
+      description: 'Rectangular pulse with non-unit width and center shift.',
+    ),
+    FourierExample(
+      expression: 'tri((t-1)/2)',
+      title: 'Shifted triangular pulse',
+      category: 'Window',
+      inputLatex: r'\operatorname{tri}\left(\frac{t-1}{2}\right)',
+      transformLatex: r'2e^{-j\omega}\left(\frac{\sin(\omega)}{\omega}\right)^2',
+      description: 'Triangular pulse with scaling and time shift.',
+    ),
+    FourierExample(
       expression: 'delta(t)',
       title: 'Impulse',
       category: 'Basic pair',
@@ -890,6 +914,9 @@ class _FormulaPreview extends StatelessWidget {
       out = out.replaceAllMapped(RegExp(r'\bpi\b'), (_) => r'\pi');
       out = out.replaceAllMapped(RegExp(r'\bsin\b'), (_) => r'\sin');
       out = out.replaceAllMapped(RegExp(r'\bcos\b'), (_) => r'\cos');
+      out = out.replaceAllMapped(RegExp(r'\bsign\b'), (_) => r'\operatorname{sign}');
+      out = out.replaceAllMapped(RegExp(r'\brect\b'), (_) => r'\operatorname{rect}');
+      out = out.replaceAllMapped(RegExp(r'\btri\b'), (_) => r'\operatorname{tri}');
       out = out.replaceAllMapped(RegExp(r'\bexp\b'), (_) => r'\mathrm{exp}');
       out = out.replaceAllMapped(RegExp(r'\bdelta\b'), (_) => r'\delta');
       // Imaginary unit
@@ -1090,6 +1117,11 @@ class _Keypad extends StatelessWidget {
               btn('cos', onTap: () => onInsert('cos(')),
               btn('exp', onTap: () => onInsert('exp(')),
               btn('abs', onTap: onInsertTPow),
+            ]),
+            row([
+              btn('sign', onTap: () => onInsert('sign(')),
+              btn('rect', onTap: () => onInsert('rect(')),
+              btn('tri', onTap: () => onInsert('tri(')),
             ]),
             row([
               btn('u(t)', onTap: () => onInsert('u(t)')),
