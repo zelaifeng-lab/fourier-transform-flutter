@@ -54,7 +54,7 @@ void main() {
       find.textContaining('PV means Cauchy principal value'),
       findsNothing,
     );
-    expect(_currentExampleFormula('u(t)'), findsOneWidget);
+    expect(_currentExampleFormula('sign(t-2)'), findsOneWidget);
     expect(find.byType(ScrollableMathLine), findsNWidgets(2));
     expect(find.byType(Math), findsAtLeastNWidgets(2));
     expect(tester.takeException(), isNull);
@@ -68,18 +68,18 @@ void main() {
     await tester.pumpWidget(const AppRoot());
     await tester.pump();
 
-    expect(find.textContaining('Example 3/46'), findsOneWidget);
-    expect(_currentExampleFormula('u(t)'), findsOneWidget);
+    expect(find.textContaining('Example 1/25'), findsOneWidget);
+    expect(_currentExampleFormula('sign(t-2)'), findsOneWidget);
 
     await tester.tap(find.text('Next'));
     await tester.pump();
-    expect(find.textContaining('Example 4/46'), findsOneWidget);
-    expect(_currentExampleFormula('u(t-2)'), findsOneWidget);
+    expect(find.textContaining('Example 2/25'), findsOneWidget);
+    expect(_currentExampleFormula('rect((t-2)/3)'), findsOneWidget);
 
     await tester.tap(find.text('Previous'));
     await tester.pump();
-    expect(find.textContaining('Example 3/46'), findsOneWidget);
-    expect(_currentExampleFormula('u(t)'), findsOneWidget);
+    expect(find.textContaining('Example 1/25'), findsOneWidget);
+    expect(_currentExampleFormula('sign(t-2)'), findsOneWidget);
   });
 
   testWidgets(

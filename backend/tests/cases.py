@@ -205,7 +205,20 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("R05", "frac(1,t^2+4)", "rational", ("pi", "omega"), expected_result_latex=r"\frac{\pi e^{- 2 |\omega|}}{2}"),
     FourierCase("R06", "frac(t,t^2+1)", "rational", ("sign", "omega"), expected_result_latex=r"- j \pi e^{- |\omega|} \mathrm{sign}(\omega)"),
     FourierCase("R07", "frac(2*t+3,t^2+6)", "rational", ("omega",), expected_result_latex=r"\pi \left(- 2 j \mathrm{sign}(\omega) + \frac{\sqrt{6}}{2}\right) e^{- \sqrt{6} |\omega|}"),
-    FourierCase("R08", "frac(2*t,3*t^2+4*t-1)", "rational", ("omega",), expected_result_latex=r"- \frac{j \pi \left(7 - 2 \sqrt{7}\right) e^{\frac{j \omega \left(2 - \sqrt{7}\right)}{3}} \mathrm{sign}(\omega)}{21} - \frac{j \pi \left(2 \sqrt{7} + 7\right) e^{\frac{j \omega \left(2 + \sqrt{7}\right)}{3}} \mathrm{sign}(\omega)}{21}"),
+    FourierCase("R08", "frac(2*t,3*t^2+4*t-1)", "rational", ("omega",), expected_result_latex=r"- \frac{j \pi \left(2 \sqrt{7} + 7\right) e^{- j \omega \left(- \frac{\sqrt{7}}{3} - \frac{2}{3}\right)} \mathrm{sign}(\omega)}{21} + \frac{j \pi \left(-7 + 2 \sqrt{7}\right) e^{- j \omega \left(- \frac{2}{3} + \frac{\sqrt{7}}{3}\right)} \mathrm{sign}(\omega)}{21}"),
+    FourierCase(
+        "R15",
+        "frac(t^5+t^4+t^3,(t+1)(t^2+1)(t+6)(t^2+6))",
+        "rational_composite",
+        ("sign", "omega", "sqrt", "e"),
+        expected_result_latex=r"\pi \left(- \frac{6 j \mathrm{sign}(\omega)}{35} - \frac{\sqrt{6}}{7}\right) e^{- \sqrt{6} |\omega|} + \pi \left(\frac{7 j \mathrm{sign}(\omega)}{370} + \frac{1}{74}\right) e^{- |\omega|} - \frac{1116 j \pi e^{6 j \omega} \mathrm{sign}(\omega)}{1295} + \frac{j \pi e^{j \omega} \mathrm{sign}(\omega)}{70}",
+        expected_steps_contains=(
+            r"\textbf{Step 2: Apply partial fraction decomposition}",
+            r"\frac{6 \left(t - 5\right)}{35 \left(t^{2} + 6\right)}",
+            r"\frac{1116}{1295 \left(t + 6\right)}",
+            r"\textbf{Step 4: Combine by linearity}",
+        ),
+    ),
     FourierCase("R09", "frac(t^2,t(t+1))", "rational", ("sign", "delta", "omega"), expected_result_latex=r"j \pi e^{j \omega} \mathrm{sign}(\omega) + 2 \pi \delta\left(\omega\right)"),
     FourierCase("R10", "frac(t^2(t+1),t^3(t+1))", "rational_pv", ("sign", "omega"), expected_result_latex=r"-j\pi\,\mathrm{sign}(\omega)"),
     FourierCase("R11", "frac(t^2（t+1）,t^3(t+1))", "rational_pv", ("sign", "omega"), expected_result_latex=r"-j\pi\,\mathrm{sign}(\omega)"),
@@ -215,21 +228,94 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("W04", "4*rect((t+1)/2)", "rect_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{8 e^{j \omega} \sin{\left(\omega \right)}}{\omega}"),
     FourierCase("W09", "tri((t-1)/2)", "tri_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{2 e^{- j \omega} \sin^{2}{\left(\omega \right)}}{\omega^{2}}"),
     FourierCase("W10", "3*tri((t+2)/4)", "tri_window", ("omega", "sin", "e"), expected_result_latex=r"\frac{3 e^{2 j \omega} \sin^{2}{\left(2 \omega \right)}}{\omega^{2}}"),
+    FourierCase("W05", "frac(sin(t),pi*t)", "sinc", ("Rect", "omega"), expected_result_latex=r"\operatorname{Rect}{\left(\frac{\omega}{2} \right)}"),
+    FourierCase("W06", "frac(sin(a*t),pi*t)", "sinc", ("Rect", "omega", "a"), expected_result_latex=r"\operatorname{Rect}{\left(\frac{\omega}{2 a} \right)}"),
+    FourierCase("W07", "frac(sin(t),t)", "sinc", ("Rect", "omega", "pi"), expected_result_latex=r"\pi \operatorname{Rect}{\left(\frac{\omega}{2} \right)}"),
+    FourierCase("W11", "frac(sin(a*t),t)", "sinc", ("Rect", "omega", "a"), expected_result_latex=r"\pi \operatorname{Rect}{\left(\frac{\omega}{2 a} \right)}"),
+    FourierCase("F01", "exp(-t^2)", "gaussian", ("omega",), expected_result_latex=r"\sqrt{\pi} e^{- \frac{\omega^{2}}{4}}"),
+    FourierCase("F02", "exp(-2*t^2)", "gaussian", ("omega",), expected_result_latex=r"\frac{\sqrt{2} \sqrt{\pi} e^{- \frac{\omega^{2}}{8}}}{2}"),
+    FourierCase("F08", "exp(-a*t^2)", "gaussian", ("omega", "a"), expected_result_latex=r"\sqrt{\pi} \sqrt{\frac{1}{a}} e^{- \frac{\omega^{2}}{4 a}}"),
+    FourierCase(
+        "PR01",
+        "exp(-(t+1)^2)",
+        "property_time_shift",
+        ("sqrt", "pi", "e", "omega"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a time shift}",
+            r"x(t)=g(t-c),\quad c=-1",
+            r"\mathcal{F}\{g(t-c)\}=e^{-j\omega c}G(\omega)",
+        ),
+    ),
+    FourierCase(
+        "PR02",
+        "exp(-abs(t-2))",
+        "property_time_shift",
+        ("omega", r"e^{- 2 j \omega}"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a time shift}",
+            r"x(t)=g(t-c),\quad c=2",
+            r"G(\omega)=\frac{2}{\omega^{2} + 1}",
+        ),
+    ),
+    FourierCase(
+        "PR03",
+        "exp(I*3*t)*exp(-t^2)",
+        "property_modulation",
+        (r"\omega - 3", "sqrt", "pi"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a modulation factor}",
+            r"\omega_0=3,\quad \phi=0",
+            r"\mathcal{F}\{e^{j\omega_0 t}g(t)\}=G(\omega-\omega_0)",
+        ),
+    ),
+    FourierCase(
+        "PR04",
+        "exp(I*(2*t+1))*exp(-abs(t))",
+        "property_modulation",
+        (r"\omega - 2", r"e^{j}"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a modulation factor}",
+            r"\omega_0=2,\quad \phi=1",
+            r"\text{The constant phase }e^{j\phi}\text{ is kept as a multiplier.}",
+        ),
+    ),
+    FourierCase(
+        "PR05",
+        "exp(I*3*t)*exp(-(t+1)^2)",
+        "property_modulation_time_shift",
+        (r"\omega - 3", "sqrt", "pi", r"e^{j \left(\omega - 3\right)}"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a modulation factor}",
+            r"g(t)=e^{- \left(t + 1\right)^{2}}",
+            r"G(\omega)=\sqrt{\pi} e^{- \frac{\omega^{2}}{4}} e^{j \omega}",
+        ),
+    ),
+    FourierCase(
+        "PR06",
+        "t*exp(-t^2)",
+        "property_time_multiplication",
+        ("j", "sqrt", "pi", "omega"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify multiplication by }t",
+            r"\mathcal{F}\{t g(t)\}=j\frac{d}{d\omega}G(\omega)",
+        ),
+    ),
+    FourierCase(
+        "PR07",
+        "t*exp(-abs(t))",
+        "property_time_multiplication",
+        ("j", "omega", r"\left(\omega^{2} + 1\right)^{2}"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify multiplication by }t",
+            r"G(\omega)=\frac{2}{\omega^{2} + 1}",
+            r"\mathcal{F}\{t g(t)\}=j\frac{d}{d\omega}G(\omega)",
+        ),
+    ),
 )
 
 
 KNOWN_GAP_CASES: tuple[FourierCase, ...] = ()
 
 
-FUTURE_CASES: tuple[FourierCase, ...] = (
-    FourierCase("E07", "exp(-a*t)*u(t)", "future_parameter", implemented=False),
-    FourierCase("E08", "exp(-a*abs(t))", "future_parameter", implemented=False),
-    FourierCase("R12", "frac(1,t^2)", "future_distribution", implemented=False),
-    FourierCase("R13", "frac(1,(t+2)^2)", "future_distribution", implemented=False),
-    FourierCase("W05", "frac(sin(t),pi*t)", "future_sinc", implemented=False),
-    FourierCase("W06", "frac(sin(3*t),pi*t)", "future_sinc", implemented=False),
-    FourierCase("W07", "frac(sin(t),t)", "future_sinc", implemented=False),
-    FourierCase("F01", "exp(-t^2)", "future_gaussian", implemented=False),
-    FourierCase("F02", "exp(-2*t^2)", "future_gaussian", implemented=False),
-)
+FUTURE_CASES: tuple[FourierCase, ...] = ()
 

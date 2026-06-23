@@ -76,8 +76,8 @@ Polynomial times step rule:
 | E04 | `exp(-t)*u(t)` | `1/(1+I*omega)` | true | One-sided exponential |
 | E05 | `exp(-2*t)*u(t)` | `1/(2+I*omega)` | true | One-sided exponential |
 | E06 | `exp(-3*abs(t))` | `6/(9+omega^2)` | true | Two-sided decaying exponential |
-| E07 | `exp(-a*t)*u(t)` | `1/(a+I*omega), a>0` | false | Future parameter rule |
-| E08 | `exp(-a*abs(t))` | `2*a/(a^2+omega^2), a>0` | false | Future parameter rule |
+| E07 | `exp(-a*t)*u(t)` | `1/(a+I*omega), a>0` | true | Parameter one-sided exponential rule |
+| E08 | `exp(-a*abs(t))` | `2*a/(a^2+omega^2), a>0` | true | Parameter two-sided exponential rule |
 | E09 | `exp(I*2*t)*u(t-3)` | Shifted modulated step: `exp(-I*(omega-2)*3)*(pi*delta(omega-2)-I*PV(1/(omega-2)))` | true | Distribution form; no direct integral |
 | E10 | `exp(I*(2*t+1))*u(t+3)` | Shifted modulated step with phase: `exp(I)*exp(I*(omega-2)*3)*(pi*delta(omega-2)-I*PV(1/(omega-2)))` | true | Distribution form; no direct integral |
 | E11 | `3*exp(-I*t)*u(t-2)` | Scaled shifted modulated step around `omega=-1` | true | Distribution form; no direct integral |
@@ -118,8 +118,10 @@ Polynomial times step rule:
 | R06 | `frac(t,t^2+1)` | `-I*pi*sign(omega)*exp(-abs(omega))` | true | Odd rational pair |
 | R07 | `frac(2*t+3,t^2+6)` | `2*F{t/(t^2+6)} + 3*F{1/(t^2+6)}` | true | Rational linearity |
 | R08 | `frac(2*t,3*t^2+4*t-1)` | Real partial fractions, then termwise PV results | true | More complex rational function |
-| R09 | `frac(1,t^2)` | `-pi*abs(omega)` | false | Future distribution rule |
-| R10 | `frac(1,(t+2)^2)` | `exp(I*2*omega)*(-pi*abs(omega))` | false | Future shifted distribution rule |
+| R15 | `frac(t^5+t^4+t^3,(t+1)(t^2+1)(t+6)(t^2+6))` | Partial fractions into shifted PV and quadratic rational pairs | true | High-order composite rational regression |
+| R12 | `frac(1,t^2)` | `-pi*abs(omega)` | true | Second-order PV distribution rule |
+| R13 | `frac(1,(t+2)^2)` | `exp(I*2*omega)*(-pi*abs(omega))` | true | Shifted second-order PV rule |
+| R14 | `frac(1,(3*t-2)^2)` | `-(pi/9)*exp(-I*2*omega/3)*abs(omega)` | true | Scaled and shifted second-order PV rule |
 
 ## 6. Window, Rect, And Sinc Family
 
@@ -131,21 +133,36 @@ Polynomial times step rule:
 | W04 | `4*rect((t+1)/2)` | `4*exp(I*omega)*2*sin(omega)/omega` | true | Amplitude, shift, and width scaling |
 | W09 | `tri((t-1)/2)` | `2*exp(-I*omega)*(sin(omega)/omega)^2` | true | Shifted and scaled triangular pulse |
 | W10 | `3*tri((t+2)/4)` | `3*exp(2*I*omega)*sin(2*omega)^2/omega^2` | true | Amplitude, shift, and width scaling |
-| W05 | `frac(sin(t),pi*t)` | `1 for abs(omega)<1` | false | Future sinc rule |
-| W06 | `frac(sin(3*t),pi*t)` | `1 for abs(omega)<3` | false | Future sinc rule |
-| W07 | `frac(sin(t),t)` | `pi for abs(omega)<1` | false | Future sinc rule |
+| W05 | `frac(sin(t),pi*t)` | `rect(omega/2)` | true | Sinc-to-rect rule |
+| W06 | `frac(sin(a*t),pi*t)` | `rect(omega/(2*a)), a>0` | true | Parameterized sinc-to-rect rule |
+| W07 | `frac(sin(t),t)` | `pi*rect(omega/2)` | true | Sinc-without-pi rule |
+| W11 | `frac(sin(a*t),t)` | `pi*rect(omega/(2*a)), a>0` | true | Parameterized sinc-without-pi rule |
 
 ## 7. Common Future Rules
 
 | ID | Expression | Expected result | Implemented | Notes |
 |---|---|---|---|---|
-| F01 | `exp(-t^2)` | `sqrt(pi)*exp(-omega^2/4)` | false | Gaussian |
-| F02 | `exp(-2*t^2)` | `sqrt(pi/2)*exp(-omega^2/8)` | false | Gaussian |
-| F03 | `x(t-a)` | `exp(-I*omega*a)*X(omega)` | false | Abstract time shift |
-| F04 | `exp(I*w0*t)*x(t)` | `X(omega-w0)` | false | Abstract modulation |
+| F01 | `exp(-t^2)` | `sqrt(pi)*exp(-omega^2/4)` | true | Gaussian rule |
+| F02 | `exp(-2*t^2)` | `sqrt(pi/2)*exp(-omega^2/8)` | true | Scaled Gaussian rule |
+| F08 | `exp(-a*t^2)` | `sqrt(pi/a)*exp(-omega^2/(4*a)), a>0` | true | Parameterized Gaussian rule |
+| F03 | `g(t-c)` | `exp(-I*omega*c)*G(omega)` | true | Controlled time-shift wrapper when `g(t)` is covered by existing rules |
+| F04 | `exp(I*w0*t)*g(t)` | `G(omega-w0)` | true | Controlled modulation wrapper when `g(t)` is covered by existing rules |
 | F05 | `x(a*t)` | `1/abs(a)*X(omega/a)` | false | Abstract scaling |
 | F06 | `diff(x(t),t)` | `I*omega*X(omega)` | false | Time differentiation |
-| F07 | `t*x(t)` | `I*dX/domega` | false | Frequency differentiation |
+| F07 | `t*g(t)` | `I*dG/domega` | true | Controlled time-multiplication wrapper for closed-form non-distribution spectra |
+
+
+### Phase 1 Generic Property Wrapper Regression Cases
+
+| ID | Expression | Expected result | Implemented | Notes |
+|---|---|---|---|---|
+| PR01 | `exp(-(t+1)^2)` | `sqrt(pi)*exp(I*omega)*exp(-omega^2/4)` | true | Time shift of Gaussian |
+| PR02 | `exp(-abs(t-2))` | `2*exp(-2*I*omega)/(omega^2+1)` | true | Time shift of two-sided exponential |
+| PR03 | `exp(I*3*t)*exp(-t^2)` | `sqrt(pi)*exp(-(omega-3)^2/4)` | true | Modulation of Gaussian |
+| PR04 | `exp(I*(2*t+1))*exp(-abs(t))` | `exp(I)*2/((omega-2)^2+1)` | true | Modulation with constant phase |
+| PR05 | `exp(I*3*t)*exp(-(t+1)^2)` | `sqrt(pi)*exp(I*(omega-3))*exp(-(omega-3)^2/4)` | true | Combined modulation and time shift |
+| PR06 | `t*exp(-t^2)` | `-I*sqrt(pi)*omega*exp(-omega^2/4)/2` | true | Frequency differentiation for a Gaussian spectrum |
+| PR07 | `t*exp(-abs(t))` | `-4*I*omega/(omega^2+1)^2` | true | Frequency differentiation for a rational closed-form spectrum |
 
 ## 8. Convolution Cases
 

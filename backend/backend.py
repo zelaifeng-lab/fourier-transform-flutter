@@ -1327,6 +1327,311 @@ def _rule_tri_distribution(f):
     return "closed_form", True, X, steps, "", None
 
 
+def _param_positive_condition(alpha):
+    try:
+        alpha = simplify(alpha)
+        if getattr(alpha, "is_positive", None) is True:
+            return ""
+        if getattr(alpha, "is_number", False) and float(N(alpha)) > 0:
+            return ""
+    except Exception:
+        pass
+    return r"a>0"
+
+
+def _rule_pv_second_order(f):
+    """Distribution rule for PV 1/(a*t+b)^2."""
+    try:
+        num, den = f.as_numer_denom()
+        if simplify(num - 1) != 0:
+            return None
+        if not (getattr(den, "is_Pow", False) and simplify(den.exp - 2) == 0):
+            return None
+        lin = _as_linear_in_t(den.base)
+        if lin is None:
+            return None
+        a, b = lin
+        if simplify(a) == 0:
+            return None
+        shift = simplify(b / a)
+        X = simplify(-(pi / (a**2)) * Abs(omega) * exp(I*omega*shift))
+        X = _omega_real_cleanup(X)
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Interpret the reciprocal square as a principal-value distribution}",
+            r"\mathcal{F}\left\{\mathrm{PV}\frac{1}{t^2}\right\}=-\pi|\omega|",
+            r"\text{PV is required because the time-domain expression has a second-order singularity.}",
+            r"\textbf{Step 3: Rewrite the denominator into shifted and scaled form}",
+            r"a t+b=a\left(t+\frac{b}{a}\right),\quad a=" + latex(a) + r",\quad b=" + latex(b),
+            r"\textbf{Step 4: Apply scaling, shift, and linearity}",
+            r"X(\omega)=-\frac{\pi}{a^2}e^{j\omega b/a}|\omega|",
+        ]
+        steps += _step_final_result(X)
+        return ("distribution_form", True, X, steps, "", None)
+    except Exception:
+        return None
+
+
+def _rule_sinc_family(f):
+    """Known sinc-window pairs, displayed with a frequency-domain rect."""
+    try:
+        num, den = f.as_numer_denom()
+        if getattr(num, "func", None) != sin or len(num.args) != 1:
+            return None
+        lin = _as_linear_in_t(num.args[0])
+        if lin is None:
+            return None
+        alpha, phase = lin
+        if simplify(phase) != 0 or simplify(alpha) == 0:
+            return None
+        if simplify(den - pi*t) == 0:
+            scale = 1
+            pair_latex = r"\mathcal{F}\left\{\frac{\sin(a t)}{\pi t}\right\}=\operatorname{rect}\left(\frac{\omega}{2a}\right),\quad a>0"
+        elif simplify(den - t) == 0:
+            scale = pi
+            pair_latex = r"\mathcal{F}\left\{\frac{\sin(a t)}{t}\right\}=\pi\operatorname{rect}\left(\frac{\omega}{2a}\right),\quad a>0"
+        else:
+            return None
+        X = simplify(scale * Rect(omega / (2*alpha)))
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Identify the sinc-type signal}",
+            r"x(t)=C\frac{\sin(a t)}{t},\quad a=" + latex(alpha),
+            r"\textbf{Step 3: Use the sinc-rect transform pair}",
+            pair_latex,
+            r"\textbf{Step 4: Substitute the parameter}",
+        ]
+        steps += _step_final_result(X)
+        return ("closed_form", True, X, steps, _param_positive_condition(alpha), None)
+    except Exception:
+        return None
+
+
+def _rule_gaussian_family(f):
+    """Known Gaussian pair exp(-a*t^2), a>0."""
+    try:
+        if getattr(f, "func", None) != exp or len(f.args) != 1:
+            return None
+        arg = expand(f.args[0])
+        poly = Poly(arg, t)
+        if poly.degree() != 2:
+            return None
+        c2 = simplify(poly.coeff_monomial(t**2))
+        c1 = simplify(poly.coeff_monomial(t))
+        c0 = simplify(poly.coeff_monomial(1))
+        if simplify(c1) != 0 or simplify(c0) != 0:
+            return None
+        alpha = simplify(-c2)
+        if simplify(alpha) == 0:
+            return None
+        X = simplify(sqrt(pi/alpha) * exp(-omega**2/(4*alpha)))
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Identify the Gaussian form}",
+            r"x(t)=e^{-a t^2},\quad a=" + latex(alpha) + r",\quad a>0",
+            r"\textbf{Step 3: Use the Gaussian transform pair}",
+            r"\mathcal{F}\{e^{-a t^2}\}=\sqrt{\frac{\pi}{a}}e^{-\omega^2/(4a)},\quad a>0",
+            r"\textbf{Step 4: Substitute the parameter}",
+        ]
+        steps += _step_final_result(X)
+        return ("closed_form", True, X, steps, _param_positive_condition(alpha), None)
+    except Exception:
+        return None
+
+
+def _rule_two_sided_exponential_parameter(f):
+    """Known pair exp(-a*abs(t)), a>0."""
+    try:
+        if getattr(f, "func", None) != exp or len(f.args) != 1:
+            return None
+        arg = f.args[0]
+        if not arg.has(Abs(t)):
+            return None
+        alpha = simplify(-arg / Abs(t))
+        if alpha.has(t) or simplify(alpha) == 0:
+            return None
+        X = simplify(2*alpha/(alpha**2 + omega**2))
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Identify the two-sided exponential form}",
+            r"x(t)=e^{-a|t|},\quad a=" + latex(alpha) + r",\quad a>0",
+            r"\textbf{Step 3: Use the two-sided exponential transform pair}",
+            r"\mathcal{F}\{e^{-a|t|}\}=\frac{2a}{a^2+\omega^2},\quad a>0",
+            r"\textbf{Step 4: Substitute the parameter}",
+        ]
+        steps += _step_final_result(X)
+        return ("closed_form", True, X, steps, _param_positive_condition(alpha), None)
+    except Exception:
+        return None
+
+
+def _iter_subexpressions(expr):
+    yield expr
+    for arg in getattr(expr, "args", ()):
+        yield from _iter_subexpressions(arg)
+
+
+def _shift_candidates(expr):
+    candidates = []
+    seen = set()
+    for sub in _iter_subexpressions(expr):
+        lin = _as_linear_in_t(sub)
+        if lin is None:
+            continue
+        a, b = lin
+        if simplify(a) == 0 or simplify(b) == 0:
+            continue
+        try:
+            c = simplify(-b/a)
+        except Exception:
+            continue
+        key = str(c)
+        if key not in seen:
+            seen.add(key)
+            candidates.append(c)
+    return candidates
+
+
+def _shift_score(expr):
+    return len(_shift_candidates(expr))
+
+
+def _rule_generic_time_shift(f):
+    """Controlled property wrapper: x(t)=g(t-c) -> e^{-j*w*c}G(w)."""
+    try:
+        original_score = _shift_score(f)
+        if original_score == 0:
+            return None
+        for c in _shift_candidates(f):
+            base = simplify(f.subs(t, t + c))
+            if base == f or _shift_score(base) >= original_score:
+                continue
+            form, ok, G, _, conditions, error = _derive_with_properties(base)
+            if not ok or form not in ("closed_form", "distribution_form"):
+                continue
+            if G.has(DiracDelta):
+                continue
+            X = _omega_real_cleanup(Mul(exp(-I*omega*c), G, evaluate=False))
+            steps = _step_start_definition(f)
+            steps += [
+                r"\textbf{Step 2: Identify a time shift}",
+                r"x(t)=g(t-c),\quad c=" + latex(c),
+                r"g(t)=" + _format_step_display_latex(latex(base)),
+                r"\textbf{Step 3: Use the known or previously derived transform of }g(t)",
+                r"G(\omega)=" + latex(G),
+                r"\textbf{Step 4: Apply the time-shift property}",
+                r"\mathcal{F}\{g(t-c)\}=e^{-j\omega c}G(\omega)",
+            ]
+            steps += _step_final_result(X)
+            return (form, True, X, steps, conditions, error)
+    except Exception:
+        return None
+    return None
+
+
+def _extract_generic_modulation(f):
+    try:
+        if getattr(f, "func", None) == exp and len(f.args) == 1:
+            arg = f.args[0]
+            real_part = simplify(re(arg))
+            imag_part = simplify(im(arg))
+            lin = _as_linear_in_t(imag_part)
+            if lin is not None:
+                w0, phi = lin
+                if simplify(w0) != 0:
+                    base = simplify(exp(real_part))
+                    if simplify(base - 1) != 0:
+                        return base, simplify(w0), simplify(phi)
+
+        if not isinstance(f, Mul):
+            return None
+        for factor in f.args:
+            if getattr(factor, "func", None) != exp or len(factor.args) != 1:
+                continue
+            phase = simplify(factor.args[0] / I)
+            if phase.has(I):
+                continue
+            lin = _as_linear_in_t(phase)
+            if lin is None:
+                continue
+            w0, phi = lin
+            if simplify(w0) == 0:
+                continue
+            base = simplify(f / factor)
+            if simplify(base - 1) == 0:
+                continue
+            return base, simplify(w0), simplify(phi)
+    except Exception:
+        return None
+    return None
+
+
+def _rule_generic_modulation(f):
+    """Controlled property wrapper: e^{j*w0*t+j*phi}g(t) -> e^{j*phi}G(w-w0)."""
+    try:
+        extracted = _extract_generic_modulation(f)
+        if extracted is None:
+            return None
+        base, w0, phi = extracted
+        form, ok, G, _, conditions, error = _derive_with_properties(base)
+        if not ok or form not in ("closed_form", "distribution_form"):
+            return None
+        shifted = G.subs(omega, omega - w0)
+        if simplify(phi) == 0:
+            X = _omega_real_cleanup(shifted)
+        else:
+            X = _omega_real_cleanup(Mul(exp(I*phi), shifted, evaluate=False))
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Identify a modulation factor}",
+            r"x(t)=e^{j(\omega_0 t+\phi)}g(t),\quad \omega_0=" + latex(w0) + r",\quad \phi=" + latex(phi),
+            r"g(t)=" + _format_step_display_latex(latex(base)),
+            r"\textbf{Step 3: Use the known or previously derived transform of }g(t)",
+            r"G(\omega)=" + latex(G),
+            r"\textbf{Step 4: Apply the modulation property}",
+            r"\mathcal{F}\{e^{j\omega_0 t}g(t)\}=G(\omega-\omega_0)",
+            r"\text{The constant phase }e^{j\phi}\text{ is kept as a multiplier.}",
+        ]
+        steps += _step_final_result(X)
+        return (form, True, X, steps, conditions, error)
+    except Exception:
+        return None
+
+
+def _rule_time_multiply_closed_form(f):
+    """Controlled property wrapper: t*g(t) -> j*dG/dw for non-distribution spectra."""
+    try:
+        if not isinstance(f, Mul) or not f.has(t):
+            return None
+        coeff, rest = f.as_independent(t, as_Add=False)
+        args = list(Mul.make_args(rest))
+        if t not in args:
+            return None
+        args.remove(t)
+        base = simplify(Mul(*args) if args else 1)
+        if base == 1:
+            return None
+        form, ok, G, _, conditions, error = _derive_with_properties(base)
+        if not ok or form != "closed_form":
+            return None
+        if G.has(DiracDelta) or G.has(PV) or G.has(Rect) or G.has(Tri):
+            return None
+        X = _omega_real_cleanup(simplify(coeff * I * diff(G, omega)))
+        steps = _step_start_definition(f)
+        steps += [
+            r"\textbf{Step 2: Identify multiplication by }t",
+            r"x(t)=" + latex(coeff) + r"\,t\,g(t),\quad g(t)=" + _format_step_display_latex(latex(base)),
+            r"\textbf{Step 3: Use the known or previously derived transform of }g(t)",
+            r"G(\omega)=" + latex(G),
+            r"\textbf{Step 4: Apply frequency differentiation}",
+            r"\mathcal{F}\{t g(t)\}=j\frac{d}{d\omega}G(\omega)",
+        ]
+        steps += _step_final_result(X)
+        return ("closed_form", True, X, steps, conditions, error)
+    except Exception:
+        return None
+
+
 # ---------- main derivation ----------
 
 def _derive_with_properties(f):
@@ -1348,6 +1653,22 @@ def _derive_with_properties(f):
     tri_res = _rule_tri_distribution(f)
     if tri_res is not None:
         return tri_res
+
+    pv2_res = _rule_pv_second_order(f)
+    if pv2_res is not None:
+        return pv2_res
+
+    sinc_res = _rule_sinc_family(f)
+    if sinc_res is not None:
+        return sinc_res
+
+    gaussian_res = _rule_gaussian_family(f)
+    if gaussian_res is not None:
+        return gaussian_res
+
+    two_sided_exp_res = _rule_two_sided_exponential_parameter(f)
+    if two_sided_exp_res is not None:
+        return two_sided_exp_res
 
     finite_window_res = _rule_finite_step_window(f)
     if finite_window_res is not None:
@@ -1393,6 +1714,7 @@ def _derive_with_properties(f):
     trig_res = _try_trig_as_exp_distribution(f)
     if trig_res is not None:
         return trig_res
+
 
     # --- Known pair: 1/(t^2 + c), c>0 (force 蠅 real; avoid half-branch Piecewise) ---
     # Covers 1/(t^2+1), 1/(t^2+6), 1/(t^2+a^2) (interpreted as c=a^2).
@@ -1530,7 +1852,13 @@ def _derive_with_properties(f):
                 acoef, b = lin  # exponent = acoef*t + b
                 # x(t)=e^{a t + b}u(t) -> e^{b} /(j蠅 - a)
                 X = simplify(exp(b) / (I*omega - acoef))
-                cond = r"\Re(a)<0" if acoef.free_symbols else ("" )
+                condition_latex = ""
+                if acoef.free_symbols:
+                    alpha_pos = simplify(-acoef)
+                    if not alpha_pos.has(t) and str(alpha_pos).isidentifier():
+                        condition_latex = latex(alpha_pos) + r">0"
+                    else:
+                        condition_latex = r"\Re(" + latex(acoef) + r")<0"
                 steps = _step_start_definition(f)
                 steps += [
                     r"\textbf{Step 2: Use the unit step to set the integration range}",
@@ -1542,7 +1870,7 @@ def _derive_with_properties(f):
                     r"X(\omega)=\frac{e^b}{j\omega-a}",
                 ]
                 steps += _step_final_result(X)
-                return "closed_form", True, X, steps, (r"\text{Requires }\Re(a)<0" if cond else ""), None
+                return "closed_form", True, X, steps, condition_latex, None
 
     # 0.9) exp(-a*Abs(t)) (common integrable)
     if f.func == exp and len(f.args)==1 and f.args[0].has(Abs(t)):
@@ -1614,6 +1942,18 @@ def _derive_with_properties(f):
                 r"X(\omega)=" + latex(X),
                 ]
             return "distribution_form", True, X, steps, "", None
+
+    generic_mod_res = _rule_generic_modulation(f)
+    if generic_mod_res is not None:
+        return generic_mod_res
+
+    generic_shift_res = _rule_generic_time_shift(f)
+    if generic_shift_res is not None:
+        return generic_shift_res
+
+    time_multiply_res = _rule_time_multiply_closed_form(f)
+    if time_multiply_res is not None:
+        return time_multiply_res
 
 
     # 1) DiracDelta basics

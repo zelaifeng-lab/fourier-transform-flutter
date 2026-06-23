@@ -449,8 +449,6 @@ _C _cCos(_C z) {
   return _C(math.cos(x) * _cosh(y), -math.sin(x) * _sinh(y));
 }
 
-List<_C> _fftReal(List<double> x) =>
-    _fft(x.map((v) => _C(v, 0)).toList(), inverse: false);
 List<_C> _ifft(List<_C> X) => _fft(X, inverse: true);
 
 List<_C> _fft(List<_C> a, {required bool inverse}) {
