@@ -69,7 +69,7 @@ class _HomePageState extends State<HomePage> {
       expression: 'sign(t-2)',
       title: 'Shifted sign',
       category: 'PV distribution',
-      inputLatex: r'\operatorname{sign}(t-2)',
+      inputLatex: r'\mathrm{sign}(t-2)',
       transformLatex: r'e^{-j2\omega}\left(-2j\,\mathrm{PV}\frac{1}{\omega}\right)',
       description: 'Shifted sign distribution with a principal-value spectrum.',
     ),
@@ -77,7 +77,7 @@ class _HomePageState extends State<HomePage> {
       expression: 'rect((t-2)/3)',
       title: 'Shifted rectangular pulse',
       category: 'Window scale and shift',
-      inputLatex: r'\operatorname{rect}\left(\frac{t-2}{3}\right)',
+      inputLatex: r'\mathrm{rect}\left(\frac{t-2}{3}\right)',
       transformLatex: r'e^{-j2\omega}\frac{2\sin(3\omega/2)}{\omega}',
       description: 'A finite pulse with non-unit width and center shift.',
     ),
@@ -85,7 +85,7 @@ class _HomePageState extends State<HomePage> {
       expression: 'tri((t-1)/2)',
       title: 'Shifted triangular pulse',
       category: 'Window scale and shift',
-      inputLatex: r'\operatorname{tri}\left(\frac{t-1}{2}\right)',
+      inputLatex: r'\mathrm{tri}\left(\frac{t-1}{2}\right)',
       transformLatex: r'2e^{-j\omega}\left(\frac{\sin(\omega)}{\omega}\right)^2',
       description: 'Triangular pulse using both scaling and time shift.',
     ),
@@ -222,7 +222,7 @@ class _HomePageState extends State<HomePage> {
       title: 'Scaled shifted reciprocal',
       category: 'PV rational',
       inputLatex: r'\frac{1}{3t-2}',
-      transformLatex: r'-\frac{j\pi}{3}e^{-j2\omega/3}\operatorname{sign}(\omega)',
+      transformLatex: r'-\frac{j\pi}{3}e^{-j2\omega/3}\mathrm{sign}(\omega)',
       description: 'Principal-value reciprocal with scale and shift.',
     ),
     FourierExample(
@@ -261,8 +261,8 @@ class _HomePageState extends State<HomePage> {
       expression: 'frac(sin(a*t),pi*t)',
       title: 'Parameterized sinc window',
       category: 'Sinc to rect',
-      inputLatex: r'\frac{\sin(at)}{\pi t}',
-      transformLatex: r'\operatorname{rect}\left(\frac{\omega}{2a}\right),\quad a>0',
+      inputLatex: r'\frac{\sin(a\,t)}{\pi\,t}',
+      transformLatex: r'\mathrm{rect}\left(\frac{\omega}{2a}\right),\quad a>0',
       description: 'A parameterized sinc transform into a frequency window.',
     ),
   ];
@@ -702,7 +702,7 @@ class _FormulaPreview extends StatelessWidget {
           }
 
           if (input[i] == '|') {
-            buf.write(r'\mid ');
+            buf.write(r'\vert ');
             i++;
             continue;
           }
@@ -722,24 +722,40 @@ class _FormulaPreview extends StatelessWidget {
       out = out.replaceAllMapped(RegExp(r'\bpi\b'), (_) => r'\pi');
       out = out.replaceAllMapped(RegExp(r'\bsin\b'), (_) => r'\sin');
       out = out.replaceAllMapped(RegExp(r'\bcos\b'), (_) => r'\cos');
-      out = out.replaceAllMapped(RegExp(r'\bsign\b'), (_) => r'\operatorname{sign}');
-      out = out.replaceAllMapped(RegExp(r'\brect\b'), (_) => r'\operatorname{rect}');
-      out = out.replaceAllMapped(RegExp(r'\btri\b'), (_) => r'\operatorname{tri}');
+      out = out.replaceAllMapped(RegExp(r'\bsign\b'), (_) => r'\mathrm{sign}');
+      out = out.replaceAllMapped(RegExp(r'\brect\b'), (_) => r'\mathrm{rect}');
+      out = out.replaceAllMapped(RegExp(r'\btri\b'), (_) => r'\mathrm{tri}');
       out = out.replaceAllMapped(RegExp(r'\bexp\b'), (_) => r'\mathrm{exp}');
       out = out.replaceAllMapped(RegExp(r'\bdelta\b'), (_) => r'\delta');
       // Imaginary unit
       out = out.replaceAllMapped(RegExp(r'\bI\b'), (_) => r'i');
 
+      // Recursive conversion can revisit already converted LaTeX commands inside frac(...).
+      // Collapse doubled command prefixes before handing the string to flutter_math_fork.
+      for (final command in <String>[
+        'pi',
+        'sin',
+        'cos',
+        'delta',
+        'mathrm',
+        'frac',
+        'sqrt',
+        'left',
+        'right',
+      ]) {
+        out = out.replaceAll('\\\\$command', '\\$command');
+      }
+
       // NOTE: constant 'a' substitution removed (UI no longer sets a).
 
-      out = out.replaceAll('*', r'\cdot ');
+      out = out.replaceAll('*', r'\,');
       out = out.replaceAll('•', r'\bullet ');
       return out;
     }
 
     final withCursor = expr.substring(0, c) + '|' + expr.substring(c);
     final trimmed = withCursor.trim();
-    return trimmed.isEmpty ? r'\mid' : convert(trimmed);
+    return trimmed.isEmpty ? r'\vert' : convert(trimmed);
   }
 
   @override

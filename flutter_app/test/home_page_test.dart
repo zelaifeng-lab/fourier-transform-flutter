@@ -82,6 +82,37 @@ void main() {
     expect(_currentExampleFormula('sign(t-2)'), findsOneWidget);
   });
 
+
+  testWidgets('all preset examples render without math parser exceptions', (
+    tester,
+  ) async {
+    setSurfaceSize(tester, const Size(900, 900));
+
+    await tester.pumpWidget(const AppRoot());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    for (var i = 0; i < 24; i++) {
+      await tester.tap(find.text('Next'));
+      await tester.pump();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Example ${i + 2}/25 should render without thrown exceptions.',
+      );
+      expect(
+        find.textContaining('Parser Error'),
+        findsNothing,
+        reason: 'Example ${i + 2}/25 should not show a math parser error.',
+      );
+      expect(
+        find.textContaining('Build Exception'),
+        findsNothing,
+        reason: 'Example ${i + 2}/25 should not show a math build error.',
+      );
+    }
+  });
+
   testWidgets(
     'home page adapts to common screen sizes without layout exceptions',
     (tester) async {
