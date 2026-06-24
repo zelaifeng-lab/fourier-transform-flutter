@@ -7,6 +7,36 @@ import 'package:http/http.dart' as http;
 import '../responsive.dart';
 import '../scrollable_content.dart';
 
+bool containsPrincipalValueNotation({
+  required String resultLatex,
+  required List<String> stepsLatex,
+}) {
+  final text = [resultLatex, ...stepsLatex].join('\n');
+  return text.contains(r'\mathrm{PV}') ||
+      text.contains(r'\operatorname{PV}') ||
+      RegExp(r'(^|[^A-Za-z])PV([^A-Za-z]|$)').hasMatch(text);
+}
+
+class PrincipalValueNotice extends StatelessWidget {
+  final bool visible;
+
+  const PrincipalValueNotice({super.key, required this.visible});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Text(
+      'PV means Cauchy principal value. It is used when a Fourier transform is interpreted as a distribution.',
+      key: const Key('principal-value-notice'),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+      ),
+    );
+  }
+}
+
 class SymbolicResult {
   final bool ok;
   final String inputLatex; // RHS only, displayed as x(t)=...
@@ -207,6 +237,13 @@ class _SymbolPageState extends State<SymbolPage> {
                         style: theme.textTheme.titleLarge,
                       ),
                     ),
+                    if (containsPrincipalValueNotation(
+                      resultLatex: res.resultLatex,
+                      stepsLatex: res.stepsLatex,
+                    )) ...[
+                      const SizedBox(height: 8),
+                      const PrincipalValueNotice(visible: true),
+                    ],
                     const SizedBox(height: 8),
                     if (!res.ok)
                       statusLine(

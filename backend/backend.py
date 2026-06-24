@@ -178,6 +178,7 @@ class _PerfTimer:
 
 
 t = symbols("t", real=True)
+s_sym = symbols("s", real=True)
 omega = symbols("omega", real=True)
 
 def _tb_make_steps(*, recognize_lines, strategy_lines, pair_lines, combine_lines, final_expr):
@@ -542,9 +543,80 @@ def _match_t_plus_a(den):
     return simplify(b1)
 
 
+def _phase_factor_latex(shift):
+    return _format_result_display_latex(latex(exp(I * omega * simplify(shift))))
+
+
+def _display_in_s(expr):
+    return _format_step_display_latex(latex(expand(expr).subs(t, s_sym)))
+
+
+def _linear_phase_display(func_name: str, a, b, *, var: str = "t") -> str:
+    var_sym = t if var == "t" else s_sym
+    arg = simplify(a * var_sym + b)
+    return rf"\{func_name}\!\left(" + _format_step_display_latex(latex(arg)) + r"\right)"
+
+
+def _complex_exponential_display(w0, phi) -> str:
+    return _format_step_display_latex(latex(exp(I * simplify(w0 * t + phi))))
+
+
+def _is_definition_heading(s: str) -> bool:
+    return "Fourier transform definition" in s
+
+
+def _is_definition_integral_line(s: str) -> bool:
+    return s.startswith(r"X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt")
+
+
+def _strip_leading_definition_block(steps: list[str]) -> list[str]:
+    if len(steps) >= 3 and _is_definition_heading(steps[0]) and steps[1].startswith("x(t)=") and _is_definition_integral_line(steps[2]):
+        return steps[3:]
+    return steps
+
+
+def _drop_nested_definition_blocks(steps: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    i = 0
+    while i < len(steps):
+        if i + 2 < len(steps) and _is_definition_heading(steps[i]) and steps[i + 1].startswith("x(t)=") and _is_definition_integral_line(steps[i + 2]):
+            i += 3
+            continue
+        cleaned.append(steps[i])
+        i += 1
+    return cleaned
+
+
+def _should_keep_definition_block(steps: list[str]) -> bool:
+    joined = "\n".join(steps)
+    keep_markers = (
+        r"Replace the full integral",
+        r"finite interval",
+        r"integration range",
+        r"Evaluate the",
+        r"Closed-form not found",
+        r"returned the engineering-definition integral",
+    )
+    return any(marker in joined for marker in keep_markers)
+
+
+def _renumber_teaching_steps(steps: list[str]) -> list[str]:
+    out: list[str] = []
+    n = 1
+    pattern = _regex.compile(r"^\\textbf\{Step\s+\d+:\s*(.*?)\}$")
+    for s in steps:
+        m = pattern.match(s)
+        if m:
+            out.append(r"\textbf{Step " + str(n) + ": " + m.group(1) + "}")
+            n += 1
+        else:
+            out.append(s)
+    return out
+
+
 def _step_start_definition(f):
     return [
-        r"\textbf{Step 1: Start from the Fourier transform definition}",
+        r"\textbf{Step 1: According to the Fourier transform definition}",
         r"x(t)=" + _format_step_display_latex(latex(f)),
         r"X(\omega)=\int_{-\infty}^{\infty}x(t)e^{-j\omega t}\,dt",
     ]
@@ -572,7 +644,8 @@ def _format_step_display_latex(text: str) -> str:
     s = s.replace(r"i \omega", r"j \omega")
     s = s.replace(r"-i", r"-j")
     s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
-    return s
+    s = s.replace(r"\pj", r"\pi")
+    return _format_result_display_latex(s)
 
 
 def _format_result_display_latex(text: str) -> str:
@@ -596,11 +669,20 @@ def _format_result_display_latex(text: str) -> str:
     for term in pv_terms:
         s = s.replace(
             rf"\operatorname{{PV}}{{\left(\frac{{1}}{{{term}}} \right)}}",
+            rf"\mathrm{{PV}}\!\left(\frac{{1}}{{{term}}}\right)",
+        )
+        s = s.replace(
             rf"\mathrm{{PV}}\frac{{1}}{{{term}}}",
+            rf"\mathrm{{PV}}\!\left(\frac{{1}}{{{term}}}\right)",
         )
     s = _regex.sub(
         r"\\operatorname\{PV\}\{\\left\(\\frac\{1\}\{([^{}]+)\} \\right\)\}",
-        r"\\mathrm{PV}\\frac{1}{\1}",
+        r"\\mathrm{PV}\\!\\left(\\frac{1}{\1}\\right)",
+        s,
+    )
+    s = _regex.sub(
+        r"\\mathrm\{PV\}\\frac\{1\}\{([^{}]+)\}",
+        r"\\mathrm{PV}\\!\\left(\\frac{1}{\1}\\right)",
         s,
     )
     s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
@@ -899,6 +981,18 @@ def _rule_rational_apart_linearity(f):
 
                     continue
 
+                if _is_definition_heading(ss):
+
+                    continue
+
+                if ss.startswith("x(t)="):
+
+                    continue
+
+                if _is_definition_integral_line(ss):
+
+                    continue
+
                 if ("=\\mathcal" in ss and "X(" in ss):
 
                     continue
@@ -997,7 +1091,7 @@ def _rule_shifted_heaviside_distribution(f):
         r"\textbf{Step 2: Identify the signal as a shifted unit step}",
         r"x(t)=u(t-a),\quad a=" + latex(a_shift),
         r"\textbf{Step 3: Use the known step transform pair}",
-        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
         r"\text{The PV term appears because }u(t)\text{ is not absolutely integrable over }(-\infty,\infty).",
         r"\textbf{Step 4: Apply the time-shift property}",
         r"\mathcal{F}\{u(t-a)\}=e^{-j\omega a}\left(\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}\right)",
@@ -1265,7 +1359,7 @@ def _rule_sign_distribution(f):
         r"\operatorname{sign}(a(t-c))=\operatorname{sign}(a)\operatorname{sign}(t-c)",
         r"a=" + latex(_as_linear_in_t(core.args[0])[0]) + r",\quad c=" + latex(c),
         r"\textbf{Step 3: Use the sign transform pair}",
-        r"\mathcal{F}\{\operatorname{sign}(t)\}=\frac{2}{j\omega}=-2j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\mathcal{F}\{\operatorname{sign}(t)\}=\frac{2}{j\omega}=-2j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
         r"\text{PV appears because }\operatorname{sign}(t)\text{ is interpreted as a distribution.}",
         r"\textbf{Step 4: Apply the time-shift and scale factors}",
         r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
@@ -1359,7 +1453,7 @@ def _rule_pv_second_order(f):
         steps = _step_start_definition(f)
         steps += [
             r"\textbf{Step 2: Interpret the reciprocal square as a principal-value distribution}",
-            r"\mathcal{F}\left\{\mathrm{PV}\frac{1}{t^2}\right\}=-\pi|\omega|",
+            r"\mathcal{F}\left\{\mathrm{PV}\!\left(\frac{1}{t^2}\right)\right\}=-\pi|\omega|",
             r"\text{PV is required because the time-domain expression has a second-order singularity.}",
             r"\textbf{Step 3: Rewrite the denominator into shifted and scaled form}",
             r"a t+b=a\left(t+\frac{b}{a}\right),\quad a=" + latex(a) + r",\quad b=" + latex(b),
@@ -2176,9 +2270,10 @@ def _teaching_steps(f, X, steps):
             continue
         cleaned.append(s)
 
-    joined = "\n".join(cleaned)
-    if r"X(\omega)=\int" not in joined:
-        cleaned = _step_start_definition(f) + cleaned
+    cleaned = _drop_nested_definition_blocks(cleaned)
+    if not _should_keep_definition_block(cleaned):
+        cleaned = _strip_leading_definition_block(cleaned)
+    cleaned = _renumber_teaching_steps(cleaned)
 
     if not cleaned or "Final Result" not in "\n".join(cleaned):
         result_text = _format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X)))
@@ -2365,14 +2460,14 @@ def _rule_modulated_step(f):
     steps = _step_start_definition(f)
     steps += [
         r"\textbf{Step 2: Identify a modulated unit-step signal}",
-        r"x(t)=" + coeff_latex + r"e^{j(" + latex(w0) + r"t+" + latex(phi) + r")}u(t-c)",
+        r"x(t)=" + coeff_latex + _complex_exponential_display(w0, phi) + r"u(t-c)",
         r"\text{Here }\omega_0=" + latex(w0) + r",\quad \phi=" + latex(phi) + r",\quad c=" + latex(c),
         r"\textbf{Step 3: Move the step edge to the origin}",
         r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)",
         r"e^{j(\omega_0 t+\phi)}=e^{j(\omega_0 s+\omega_0 c+\phi)}",
         r"\text{For this input, }\omega_0 c+\phi=" + latex(shifted_phase),
         r"\textbf{Step 4: Use the modulated unit-step transform}",
-        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
         r"\text{PV appears because the modulated step is one-sided and not absolutely integrable.}",
         r"\textbf{Step 5: Apply the time-shift property}",
         r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
@@ -2476,10 +2571,10 @@ def _rule_shifted_poly_times_step_distribution(f):
         r"x(t)=p(t)u(t-c),\quad c=" + latex(c),
         r"\textbf{Step 3: Move the step edge to the origin}",
         r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)\text{ and }t=s+c",
-        r"p(t)\rightarrow p(s+c)=" + latex(shifted_poly),
+        r"p(s+c)=" + _display_in_s(shifted_poly),
         r"\text{For this input, use }n\in\{" + ",".join(str(n) for n in degree_values) + r"\}\text{ term by term.}",
         r"\textbf{Step 4: Reuse the polynomial-step transform pair at the origin}",
-        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\!\left(\frac{1}{\omega^{n+1}}\right)",
         r"\textbf{Step 5: Apply the time-shift property}",
         r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
     ]
@@ -2511,8 +2606,8 @@ def _rule_poly_times_step_distribution(f):
     steps = [
         r"\textbf{Method: Distribution rule (polynomial 脳 step)}",
         r"x(t)=p(t)u(t),\;p(t)=" + latex(g),
-        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
-        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\!\left(\frac{1}{\omega^{n+1}}\right)",
         r"\text{Apply polynomial linearity term by term}",
         r"\Rightarrow X(\omega)=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
         r"X(\omega)=" + latex(X),
@@ -2522,11 +2617,11 @@ def _rule_poly_times_step_distribution(f):
         r"\textbf{Step 2: Identify a polynomial multiplied by the unit step}",
         r"x(t)=p(t)u(t),\quad p(t)=" + latex(g),
         r"\text{For this input, use }n\in\{" + ",".join(str(n) for n in degree_values) + r"\}\text{ term by term.}",
-        r"\textbf{Step 3: Start from the unit-step transform pair}",
-        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
+        r"\textbf{Step 3: Use the unit-step transform pair}",
+        r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
         r"\text{The PV term appears because }u(t)\text{ is one-sided and not absolutely integrable.}",
         r"\textbf{Step 4: Use frequency differentiation}",
-        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\frac{1}{\omega^{n+1}}",
+        r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\!\left(\frac{1}{\omega^{n+1}}\right)",
         r"\textbf{Step 5: Apply polynomial linearity term by term}",
     ]
     steps += _step_final_result(X)
@@ -2590,9 +2685,9 @@ def _rule_trig_times_step_distribution(f):
         X = simplify((exp(I*shifted_phase)*_Ushift(aa) - exp(-I*shifted_phase)*_Ushift(-aa)) / (2*I))
         steps = [
             r"\textbf{Method: Distribution rule (trig 脳 step)}",
-            r"x(t)=\sin\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
+            _linear_phase_display("sin", aa, bb) + r"u(t)",
             r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}",
-            r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+            r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
             r"\text{Apply linearity and frequency shift } \omega_0=\pm " + latex(aa),
             r"X(\omega)=" + latex(X),
             ]
@@ -2600,9 +2695,9 @@ def _rule_trig_times_step_distribution(f):
         X = simplify((exp(I*shifted_phase)*_Ushift(aa) + exp(-I*shifted_phase)*_Ushift(-aa)) / 2)
         steps = [
             r"\textbf{Method: Distribution rule (trig 脳 step)}",
-            r"x(t)=\cos\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t)",
+            _linear_phase_display("cos", aa, bb) + r"u(t)",
             r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}",
-            r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+            r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
             r"\text{Apply linearity and frequency shift } \omega_0=\pm " + latex(aa),
             r"X(\omega)=" + latex(X),
             ]
@@ -2624,16 +2719,17 @@ def _rule_trig_times_step_distribution(f):
     steps = _step_start_definition(f)
     steps += [
         r"\textbf{Step 2: Identify a sinusoid multiplied by a shifted unit step}",
-        r"x(t)=" + coeff_latex + trig_display + r"\!\left(" + latex(aa) + r"t+" + latex(bb) + r"\right)u(t-c)",
+        r"x(t)=" + coeff_latex + _linear_phase_display(trig, aa, bb) + r"u(t-c)",
         r"\text{Here }a=" + latex(aa) + r",\quad b=" + latex(bb) + r",\quad c=" + latex(cc),
         r"\textbf{Step 3: Move the step edge to the origin}",
         r"\text{Let }s=t-c.\text{ Then }u(t-c)=u(s)",
         trig_display + r"\!\left(a t+b\right)=" + trig_display + r"\!\left(a s+(a c+b)\right)",
         r"\text{For this input, }a c+b=" + latex(shifted_phase),
+        r"\text{So the shifted sinusoid is }" + _linear_phase_display(trig, aa, shifted_phase, var="s"),
         r"\textbf{Step 4: Rewrite the sinusoid with Euler's identity}",
         euler_identity,
         r"\textbf{Step 5: Use the modulated unit-step transform}",
-        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\frac{1}{\omega-\omega_0}",
+        r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
         r"\text{PV appears because each modulated step remains one-sided and not absolutely integrable.}",
         r"\textbf{Step 6: Apply the time-shift property}",
         r"\mathcal{F}\{y(t-c)\}=e^{-j\omega c}Y(\omega)",
@@ -2665,7 +2761,7 @@ def _rule_poly_distribution(f):
         r"\textbf{Step 2: Identify the polynomial degree}",
         r"x(t)=t^{" + str(n) + r"}",
         r"\text{Here }n=" + str(n),
-        r"\textbf{Step 3: Start from the constant transform pair}",
+        r"\textbf{Step 3: Use the constant transform pair}",
         r"\mathcal{F}\{1\}=2\pi\delta(\omega)",
         r"\textbf{Step 4: Use frequency differentiation}",
         r"\mathcal{F}\{t^n x(t)\}=j^n\frac{d^n}{d\omega^n}X(\omega)",
@@ -2771,7 +2867,7 @@ def _format_pv_reciprocal_result_latex(f):
         if a0 is not None:
             if simplify(a0) == 0:
                 return r"-i\pi\,\mathrm{sign}(\omega)"
-            return r"e^{i\omega %s}\left(-i\pi\,\mathrm{sign}(\omega)\right)" % latex(a0)
+            return _phase_factor_latex(a0) + r"\left(-j\pi\,\mathrm{sign}(\omega)\right)"
 
         lin = _as_linear_in_t(den)
         if lin is None:
@@ -2782,7 +2878,7 @@ def _format_pv_reciprocal_result_latex(f):
 
         shift = simplify(b / a)
         if simplify(shift) == 0:
-            return r"-\frac{i\pi}{%s}\,\mathrm{sign}(\omega)" % latex(a)
-        return r"-\frac{i\pi}{%s}\,e^{i\omega %s}\,\mathrm{sign}(\omega)" % (latex(a), latex(shift))
+            return r"-\frac{j\pi}{%s}\,\mathrm{sign}(\omega)" % latex(a)
+        return r"-\frac{j\pi}{%s}\," % latex(a) + _phase_factor_latex(shift) + r"\,\mathrm{sign}(\omega)"
     except Exception:
         return None

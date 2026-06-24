@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:fourier_transform/fft/step.dart';
+import 'package:fourier_transform/fft/symbol.dart';
 import 'package:fourier_transform/main.dart';
 import 'package:fourier_transform/responsive.dart';
 import 'package:fourier_transform/scrollable_content.dart';
@@ -31,6 +32,71 @@ void main() {
     expect(AppBreakpoints.chartHeight(390), 260);
     expect(AppBreakpoints.chartHeight(800), 310);
     expect(AppBreakpoints.chartHeight(1280), 360);
+  });
+
+  test('principal value notation is detected in result or steps', () {
+    expect(
+      containsPrincipalValueNotation(
+        resultLatex: r'\mathrm{PV}\!\left(\frac{1}{\omega}\right)',
+        stepsLatex: const [],
+      ),
+      isTrue,
+    );
+    expect(
+      containsPrincipalValueNotation(
+        resultLatex: r'\pi\delta(\omega)',
+        stepsLatex: const [r'PV appears because the signal is distributional.'],
+      ),
+      isTrue,
+    );
+    expect(
+      containsPrincipalValueNotation(
+        resultLatex: r'\pi\delta(\omega)',
+        stepsLatex: const [r'ordinary absolutely convergent integral'],
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('principal value notice appears only when needed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PrincipalValueNotice(visible: true),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('principal-value-notice')), findsOneWidget);
+    expect(find.textContaining('PV means Cauchy principal value'), findsOneWidget);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PrincipalValueNotice(visible: false),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('principal-value-notice')), findsNothing);
+  });
+
+  test('chart sanitizer splits singular-looking traces', () {
+    expect(
+      chartSegmentLengthsForTest(
+        const [-2, -1, 0, 1, 2],
+        const [-2, -1, 0, 1, 2],
+      ),
+      [5],
+    );
+
+    expect(
+      chartSegmentLengthsForTest(
+        const [-2, -1, -0.1, 0, 0.1, 1, 2],
+        const [-0.5, -1, -10, 20, 10, 1, 0.5],
+      ),
+      [2, 2],
+    );
   });
 
   testWidgets('home page renders core controls', (tester) async {

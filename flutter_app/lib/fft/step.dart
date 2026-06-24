@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:syncfusion_flutter_charts/charts.dart';
 
 import '../responsive.dart';
@@ -363,43 +364,17 @@ class _OmegaChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reData = List<_Pt>.generate(
-      omega.length,
-      (i) => _Pt(omega[i], re[i]),
-    );
-    final imData = List<_Pt>.generate(
-      omega.length,
-      (i) => _Pt(omega[i], im[i]),
-    );
-    final magData = List<_Pt>.generate(
-      omega.length,
-      (i) => _Pt(omega[i], mag[i]),
-    );
+    final series = <_SeriesData>[
+      _SeriesData(name: 'Re{X(omega)}', x: omega, y: re),
+      _SeriesData(name: 'Im{X(omega)}', x: omega, y: im),
+      _SeriesData(name: '|X(omega)|', x: omega, y: mag),
+    ];
 
     return SfCartesianChart(
       legend: const Legend(isVisible: true, position: LegendPosition.bottom),
-      primaryXAxis: const NumericAxis(title: AxisTitle(text: 'ω (rad/s)')),
-      primaryYAxis: const NumericAxis(title: AxisTitle(text: 'X(ω)')),
-      series: <LineSeries<_Pt, double>>[
-        LineSeries<_Pt, double>(
-          name: 'Re{X(ω)}',
-          dataSource: reData,
-          xValueMapper: (p, _) => p.x,
-          yValueMapper: (p, _) => p.y,
-        ),
-        LineSeries<_Pt, double>(
-          name: 'Im{X(ω)}',
-          dataSource: imData,
-          xValueMapper: (p, _) => p.x,
-          yValueMapper: (p, _) => p.y,
-        ),
-        LineSeries<_Pt, double>(
-          name: '|X(ω)|',
-          dataSource: magData,
-          xValueMapper: (p, _) => p.x,
-          yValueMapper: (p, _) => p.y,
-        ),
-      ],
+      primaryXAxis: const NumericAxis(title: AxisTitle(text: 'omega (rad/s)')),
+      primaryYAxis: const NumericAxis(title: AxisTitle(text: 'X(omega)')),
+      series: _buildSegmentedLineSeries(series),
     );
   }
 }
@@ -457,15 +432,7 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seriesList = series.map((s) {
-      final data = List<_Pt>.generate(s.x.length, (i) => _Pt(s.x[i], s.y[i]));
-      return LineSeries<_Pt, double>(
-        name: s.name,
-        dataSource: data,
-        xValueMapper: (p, _) => p.x,
-        yValueMapper: (p, _) => p.y,
-      );
-    }).toList();
+    final seriesList = _buildSegmentedLineSeries(series);
 
     return _Card(
       title: title,
@@ -483,6 +450,112 @@ class _ChartCard extends StatelessWidget {
       ),
     );
   }
+}
+
+const List<Color> _chartSegmentColors = <Color>[
+  Color(0xFF2563EB),
+  Color(0xFFDC2626),
+  Color(0xFF16A34A),
+  Color(0xFF9333EA),
+  Color(0xFFEA580C),
+  Color(0xFF0891B2),
+];
+
+List<LineSeries<_Pt, double>> _buildSegmentedLineSeries(
+  List<_SeriesData> series,
+) {
+  final lines = <LineSeries<_Pt, double>>[];
+  for (var i = 0; i < series.length; i++) {
+    final color = _chartSegmentColors[i % _chartSegmentColors.length];
+    final segments = _splitRenderableSegments(series[i].x, series[i].y);
+    for (var j = 0; j < segments.length; j++) {
+      lines.add(
+        LineSeries<_Pt, double>(
+          name: series[i].name,
+          dataSource: segments[j],
+          color: color,
+          isVisibleInLegend: j == 0,
+          xValueMapper: (p, _) => p.x,
+          yValueMapper: (p, _) => p.y,
+        ),
+      );
+    }
+  }
+  return lines;
+}
+
+List<List<_Pt>> _splitRenderableSegments(List<double> x, List<double> y) {
+  final n = math.min(x.length, y.length);
+  if (n < 2) return const <List<_Pt>>[];
+
+  final finiteAbs = <double>[];
+  for (var i = 0; i < n; i++) {
+    if (x[i].isFinite && y[i].isFinite) {
+      final v = y[i].abs();
+      if (v > 1e-12) finiteAbs.add(v);
+    }
+  }
+  if (finiteAbs.isEmpty) return const <List<_Pt>>[];
+
+  finiteAbs.sort();
+  final scale = finiteAbs[finiteAbs.length ~/ 2].clamp(1e-9, 1e9).toDouble();
+  final jumpLimit = math.max(scale * 8.0, 6.0);
+  final highLimit = math.max(scale * 8.0, 8.0);
+  const hardLimit = 1e9;
+
+  final valid = List<bool>.filled(n, false);
+  for (var i = 0; i < n; i++) {
+    valid[i] = x[i].isFinite && y[i].isFinite && y[i].abs() <= hardLimit;
+  }
+
+  for (var i = 0; i < n; i++) {
+    if (!valid[i] || y[i].abs() <= highLimit) continue;
+
+    var hasSingularJump = false;
+    if (i > 0 && valid[i - 1] && (y[i] - y[i - 1]).abs() > jumpLimit) {
+      hasSingularJump = true;
+    }
+    if (i + 1 < n && valid[i + 1] && (y[i + 1] - y[i]).abs() > jumpLimit) {
+      hasSingularJump = true;
+    }
+    if (hasSingularJump) valid[i] = false;
+  }
+
+  final segments = <List<_Pt>>[];
+  var current = <_Pt>[];
+  double? previousY;
+
+  void closeSegment() {
+    if (current.length >= 2) segments.add(current);
+    current = <_Pt>[];
+    previousY = null;
+  }
+
+  for (var i = 0; i < n; i++) {
+    if (!valid[i]) {
+      closeSegment();
+      continue;
+    }
+
+    if (previousY != null) {
+      final dy = (y[i] - previousY!).abs();
+      final bothLarge = y[i].abs() > highLimit && previousY!.abs() > highLimit;
+      final crossesSign = y[i].sign != previousY!.sign;
+      if (dy > jumpLimit && (bothLarge || crossesSign)) {
+        closeSegment();
+      }
+    }
+
+    current.add(_Pt(x[i], y[i]));
+    previousY = y[i];
+  }
+  closeSegment();
+  return segments;
+}
+
+@visibleForTesting
+List<int> chartSegmentLengthsForTest(List<double> x, List<double> y) {
+  return _splitRenderableSegments(x, y).map((segment) => segment.length).toList();
 }
 
 class _Pt {

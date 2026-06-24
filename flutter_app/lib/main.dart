@@ -42,7 +42,6 @@ class FourierExample {
   final String title;
   final String category;
   final String inputLatex;
-  final String transformLatex;
   final String description;
 
   const FourierExample({
@@ -50,7 +49,6 @@ class FourierExample {
     required this.title,
     required this.category,
     required this.inputLatex,
-    required this.transformLatex,
     required this.description,
   });
 }
@@ -70,7 +68,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted sign',
       category: 'PV distribution',
       inputLatex: r'\mathrm{sign}(t-2)',
-      transformLatex: r'e^{-j2\omega}\left(-2j\,\mathrm{PV}\frac{1}{\omega}\right)',
       description: 'Shifted sign distribution with a principal-value spectrum.',
     ),
     FourierExample(
@@ -78,7 +75,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted rectangular pulse',
       category: 'Window scale and shift',
       inputLatex: r'\mathrm{rect}\left(\frac{t-2}{3}\right)',
-      transformLatex: r'e^{-j2\omega}\frac{2\sin(3\omega/2)}{\omega}',
       description: 'A finite pulse with non-unit width and center shift.',
     ),
     FourierExample(
@@ -86,7 +82,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted triangular pulse',
       category: 'Window scale and shift',
       inputLatex: r'\mathrm{tri}\left(\frac{t-1}{2}\right)',
-      transformLatex: r'2e^{-j\omega}\left(\frac{\sin(\omega)}{\omega}\right)^2',
       description: 'Triangular pulse using both scaling and time shift.',
     ),
     FourierExample(
@@ -94,7 +89,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Finite shifted window',
       category: 'Step combination',
       inputLatex: r'u(t-2)-u(t-5)',
-      transformLatex: r'\frac{e^{-j2\omega}-e^{-j5\omega}}{j\omega}',
       description: 'A rectangular interval written as two shifted steps.',
     ),
     FourierExample(
@@ -102,7 +96,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Polynomial finite window',
       category: 'Windowed polynomial',
       inputLatex: r't\,[u(t)-u(t-1)]',
-      transformLatex: r'\int_{0}^{1} t e^{-j\omega t}\,dt',
       description: 'Combines polynomial input with a finite step window.',
     ),
     FourierExample(
@@ -110,7 +103,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Polynomial-step combination',
       category: 'Polynomial times step',
       inputLatex: r'(t^2+2t+1)u(t)',
-      transformLatex: r'\mathcal{F}\{t^2u(t)\}+2\mathcal{F}\{tu(t)\}+\mathcal{F}\{u(t)\}',
       description: 'Linearity across several polynomial-step terms.',
     ),
     FourierExample(
@@ -118,7 +110,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted ramp step',
       category: 'Shifted polynomial step',
       inputLatex: r'(t-2)u(t-2)',
-      transformLatex: r'e^{-j2\omega}\mathcal{F}\{tu(t)\}',
       description: 'Moves a ramp edge away from the origin.',
     ),
     FourierExample(
@@ -126,7 +117,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Uncentered shifted ramp',
       category: 'Shifted polynomial step',
       inputLatex: r'tu(t-2)',
-      transformLatex: r'e^{-j2\omega}\mathcal{F}\{(t+2)u(t)\}',
       description: 'Shows how the polynomial changes after shifting the step edge.',
     ),
     FourierExample(
@@ -134,7 +124,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Phase-shifted sine',
       category: 'Trig phase',
       inputLatex: r'\sin(3t+2)',
-      transformLatex: r'\frac{\pi}{j}\left(e^{j2}\delta(\omega-3)-e^{-j2}\delta(\omega+3)\right)',
       description: 'Demonstrates phase factors in a sinusoid transform.',
     ),
     FourierExample(
@@ -142,7 +131,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Phase-shifted cosine',
       category: 'Trig phase',
       inputLatex: r'\cos(4t-1)',
-      transformLatex: r'\pi\left(e^{-j}\delta(\omega-4)+e^{j}\delta(\omega+4)\right)',
       description: 'Cosine with nonzero phase and shifted frequency impulses.',
     ),
     FourierExample(
@@ -150,7 +138,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Trig combination',
       category: 'Linearity',
       inputLatex: r'\sin(t)+\cos(2t)',
-      transformLatex: r'\mathcal{F}\{\sin(t)\}+\mathcal{F}\{\cos(2t)\}',
       description: 'A compact example of linearity across trigonometric terms.',
     ),
     FourierExample(
@@ -158,7 +145,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted one-sided sine',
       category: 'Trig times shifted step',
       inputLatex: r'\sin(t-1)u(t+3)',
-      transformLatex: r'e^{j3\omega}\,\mathcal{F}\{\sin(t-4)u(t)\}',
       description: 'Combines sinusoidal phase with a shifted step boundary.',
     ),
     FourierExample(
@@ -166,7 +152,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted one-sided cosine',
       category: 'Trig times shifted step',
       inputLatex: r'\cos(2t+1)u(t-3)',
-      transformLatex: r'e^{-j3\omega}\,\mathcal{F}\{\cos(2t+7)u(t)\}',
       description: 'A one-sided trigonometric signal with both phase and shift.',
     ),
     FourierExample(
@@ -174,7 +159,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Complex tone with phase',
       category: 'Modulation',
       inputLatex: r'e^{j(5t+2)}',
-      transformLatex: r'2\pi e^{j2}\delta(\omega-5)',
       description: 'Pure tone with frequency shift and constant phase.',
     ),
     FourierExample(
@@ -182,7 +166,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Modulated shifted step',
       category: 'Modulation plus shift',
       inputLatex: r'e^{j2t}u(t-3)',
-      transformLatex: r'e^{-j(\omega-2)3}\left[\pi\delta(\omega-2)-j\,\mathrm{PV}\frac{1}{\omega-2}\right]',
       description: 'Combines modulation with a delayed unit step.',
     ),
     FourierExample(
@@ -190,7 +173,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Parameterized causal exponential',
       category: 'One-sided exponential',
       inputLatex: r'e^{-at}u(t)',
-      transformLatex: r'\frac{1}{a+j\omega},\quad a>0',
       description: 'A reusable template for stable one-sided exponentials.',
     ),
     FourierExample(
@@ -198,7 +180,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Parameterized two-sided exponential',
       category: 'Even integrable signal',
       inputLatex: r'e^{-a|t|}',
-      transformLatex: r'\frac{2a}{a^2+\omega^2},\quad a>0',
       description: 'A two-sided decaying exponential with a symbolic parameter.',
     ),
     FourierExample(
@@ -206,7 +187,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Modulated shifted Gaussian',
       category: 'Gaussian plus modulation',
       inputLatex: r'e^{j3t}e^{-(t+1)^2}',
-      transformLatex: r'\sqrt{\pi}e^{j(\omega-3)}e^{-(\omega-3)^2/4}',
       description: 'Uses modulation and time shift on a Gaussian transform pair.',
     ),
     FourierExample(
@@ -214,7 +194,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Gaussian frequency differentiation',
       category: 'Frequency differentiation',
       inputLatex: r'te^{-t^2}',
-      transformLatex: r'j\frac{d}{d\omega}\left(\sqrt{\pi}e^{-\omega^2/4}\right)',
       description: 'Shows how multiplication by t differentiates the spectrum.',
     ),
     FourierExample(
@@ -222,7 +201,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Scaled shifted reciprocal',
       category: 'PV rational',
       inputLatex: r'\frac{1}{3t-2}',
-      transformLatex: r'-\frac{j\pi}{3}e^{-j2\omega/3}\mathrm{sign}(\omega)',
       description: 'Principal-value reciprocal with scale and shift.',
     ),
     FourierExample(
@@ -230,7 +208,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Second-order PV reciprocal',
       category: 'PV rational',
       inputLatex: r'\frac{1}{(3t-2)^2}',
-      transformLatex: r'-\frac{\pi}{9}e^{-j2\omega/3}|\omega|',
       description: 'A higher-order singular rational distribution.',
     ),
     FourierExample(
@@ -238,7 +215,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Linear over quadratic',
       category: 'Rational template',
       inputLatex: r'\frac{2t+3}{t^2+6}',
-      transformLatex: r'\mathcal{F}\left\{\frac{a_1t+a_0}{t^2+c}\right\}',
       description: 'Matches a reusable rational transform template.',
     ),
     FourierExample(
@@ -246,7 +222,6 @@ class _HomePageState extends State<HomePage> {
       title: 'General quadratic rational',
       category: 'Partial fractions',
       inputLatex: r'\frac{2t}{3t^2+4t-1}',
-      transformLatex: r'\text{real partial fractions }\rightarrow\text{ PV pairs}',
       description: 'Uses real-root partial fractions and known PV pairs.',
     ),
     FourierExample(
@@ -254,7 +229,6 @@ class _HomePageState extends State<HomePage> {
       title: 'High-order rational combination',
       category: 'Partial fractions',
       inputLatex: r'\frac{t^5+t^4+t^3}{(t+1)(t^2+1)(t+6)(t^2+6)}',
-      transformLatex: r'\text{partial fractions }\rightarrow\text{ shifted PV and rational pairs}',
       description: 'A larger rational example that combines several rule families.',
     ),
     FourierExample(
@@ -262,7 +236,6 @@ class _HomePageState extends State<HomePage> {
       title: 'Parameterized sinc window',
       category: 'Sinc to rect',
       inputLatex: r'\frac{\sin(a\,t)}{\pi\,t}',
-      transformLatex: r'\mathrm{rect}\left(\frac{\omega}{2a}\right),\quad a>0',
       description: 'A parameterized sinc transform into a frequency window.',
     ),
   ];

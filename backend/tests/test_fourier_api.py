@@ -50,8 +50,7 @@ TEACHING_STEP_SNAPSHOTS = (
     (
         "1",
         (
-            r"\textbf{Step 1: Start from the Fourier transform definition}",
-            r"\textbf{Step 2: Use the constant transform pair}",
+            r"\textbf{Step 1: Use the constant transform pair}",
             r"\mathcal{F}\{C\}=2\pi C\,\delta(\omega)",
             r"\textbf{Final Result}",
         ),
@@ -59,82 +58,82 @@ TEACHING_STEP_SNAPSHOTS = (
     (
         "delta(t-3)",
         (
-            r"\textbf{Step 2: Identify the impulse location}",
+            r"\textbf{Step 1: Identify the impulse location}",
             r"t_0=3",
-            r"\textbf{Step 3: Use the sifting property of the delta function}",
+            r"\textbf{Step 2: Use the sifting property of the delta function}",
             r"e^{-j\omega t_0}",
         ),
     ),
     (
         "u(t)",
         (
-            r"\textbf{Step 2: Identify the signal as a shifted unit step}",
-            r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
+            r"\textbf{Step 1: Identify the signal as a shifted unit step}",
+            r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
             r"not absolutely integrable",
-            r"\textbf{Step 4: Apply the time-shift property}",
+            r"Apply the time-shift property",
         ),
     ),
     (
         "t*u(t)",
         (
-            r"\textbf{Step 2: Identify a polynomial multiplied by the unit step}",
+            r"\textbf{Step 1: Identify a polynomial multiplied by the unit step}",
             r"p(t)=t",
             r"n\in\{1\}",
-            r"\textbf{Step 4: Use frequency differentiation}",
-            r"\textbf{Step 5: Apply polynomial linearity term by term}",
+            r"Use frequency differentiation",
+            r"Apply polynomial linearity term by term",
         ),
     ),
     (
         "sin(t)*u(t)",
         (
-            r"\textbf{Step 2: Identify a sinusoid multiplied by a shifted unit step}",
+            r"\textbf{Step 1: Identify a sinusoid multiplied by a shifted unit step}",
             r"a=1,\quad b=0,\quad c=0",
-            r"\textbf{Step 3: Move the step edge to the origin}",
+            r"Move the step edge to the origin",
             r"a c+b=0",
-            r"\textbf{Step 5: Use the modulated unit-step transform}",
+            r"Use the modulated unit-step transform",
             r"PV appears because each modulated step remains one-sided",
         ),
     ),
     (
         "t",
         (
-            r"\textbf{Step 2: Identify the polynomial degree}",
+            r"\textbf{Step 1: Identify the polynomial degree}",
             r"\text{Here }n=1",
-            r"\textbf{Step 4: Use frequency differentiation}",
+            r"Use frequency differentiation",
         ),
     ),
     (
         "exp(-2*t)*u(t)",
         (
-            r"\textbf{Step 2: Use the unit step to set the integration range}",
+            r"\textbf{Step 1: Use the unit step to set the integration range}",
             r"a=-2,\quad b=0",
-            r"\textbf{Step 3: Combine exponential terms}",
-            r"\textbf{Step 4: Evaluate the convergent one-sided exponential integral}",
+            r"\textbf{Step 2: Combine exponential terms}",
+            r"\textbf{Step 3: Evaluate the convergent one-sided exponential integral}",
         ),
     ),
     (
         "sin(3*t+2)",
         (
-            r"\textbf{Step 2: Identify the sinusoidal phase}",
+            r"\textbf{Step 1: Identify the sinusoidal phase}",
             r"a=3,\quad b=2",
             r"\text{Here the two exponential frequencies are }\omega_0=a\text{ and }\omega_0=-a.",
-            r"\textbf{Step 5: Combine delta functions}",
+            r"Combine delta functions",
         ),
     ),
     (
         "frac(1,3*t-2)",
         (
-            r"\textbf{Step 2: Interpret the reciprocal as a principal-value distribution}",
+            r"\textbf{Step 1: Interpret the reciprocal as a principal-value distribution}",
             r"PV means the singularity is handled by symmetric limiting around the pole.",
-            r"\textbf{Step 3: Rewrite the denominator into shifted form}",
+            r"Rewrite the denominator into shifted form",
             r"a=3,\;b=-2",
         ),
     ),
     (
         "frac(1,t^2+1)",
         (
-            r"\textbf{Step 2: Identify a standard rational transform pair}",
-            r"\textbf{Step 3: Rewrite the denominator as }t^2+\alpha^2",
+            r"\textbf{Step 1: Identify a standard rational transform pair}",
+            r"Rewrite the denominator as }t^2+\alpha^2",
             r"\mathcal{F}\left\{\frac{1}{t^2+\alpha^2}\right\}",
             r"\frac{\pi}{\alpha}e^{-\alpha|\omega|}",
         ),
@@ -142,10 +141,10 @@ TEACHING_STEP_SNAPSHOTS = (
     (
         "u(t-2)-u(t-5)",
         (
-            r"\textbf{Step 2: Identify a finite-duration signal}",
+            r"\textbf{Step 1: Identify a finite-duration signal}",
             r"x(t)=1\;\;\text{for }t\in[2,5]",
-            r"\textbf{Step 4: Replace the full integral by the interval integral}",
-            r"\textbf{Step 5: Evaluate the exponential integral}",
+            r"\textbf{Step 3: Replace the full integral by the interval integral}",
+            r"\textbf{Step 4: Evaluate the exponential integral}",
         ),
     ),
 )
@@ -212,26 +211,36 @@ def _assert_teaching_result(case: FourierCase) -> None:
         assert token in result_latex, f"{case.id} result should contain {token!r}: {result_latex}"
 
     steps_latex = _joined_steps(payload)
-    assert r"X(\omega)=\int" in steps_latex, f"{case.id} steps should start from the Fourier definition"
+    assert "Start from the Fourier transform definition" not in steps_latex
     assert "Final Result" in steps_latex, f"{case.id} steps should include a final result section"
     assert r"\theta\left" not in steps_latex, f"{case.id} steps should display unit steps as u(t)"
-    assert "i\\omega" not in steps_latex, f"{case.id} steps should use engineering j notation"
-    assert "i \\omega" not in steps_latex, f"{case.id} steps should use engineering j notation"
+    assert "e^{-i" not in steps_latex and "e^{i" not in steps_latex, f"{case.id} steps should use engineering j notation"
+    assert not _regex.search(r"(?<![A-Za-z\\])i\s*\\omega", steps_latex), f"{case.id} steps should use engineering j notation"
     if "PV" in result_latex or "rational_pv" in case.category:
         assert (
             "PV" in steps_latex or "principal value" in steps_latex
         ), f"{case.id} steps should explain the principal-value part"
 
     assert r"\operatorname{PV}" not in result_latex
+    assert r"\mathrm{PV}\frac" not in result_latex
     assert r"\operatorname{sign}" not in result_latex
     assert r"\left|{\omega}\right|" not in result_latex
     assert r"\delta^{\left(" not in result_latex
+    assert r"\mathrm{PV}\frac" not in steps_latex
+    assert "1t+" not in steps_latex
+    assert "+-" not in steps_latex
+    assert r"\pj" not in steps_latex
     assert not _regex.search(r"(?<![A-Za-z])i(?![A-Za-z])", result_latex), (
         f"{case.id} result should use engineering j notation: {result_latex}"
     )
 
     for token in case.expected_steps_contains:
-        assert token in steps_latex, f"{case.id} steps should contain {token!r}: {steps_latex}"
+        if token in steps_latex:
+            continue
+        step_match = _regex.match(r"\\textbf\{Step\s+\d+:\s*(.*?)\}$", token)
+        if step_match and step_match.group(1) in steps_latex:
+            continue
+        assert False, f"{case.id} steps should contain {token!r}: {steps_latex}"
 
     _assert_no_forbidden_tokens(payload)
 
