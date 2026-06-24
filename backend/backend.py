@@ -678,6 +678,50 @@ def _format_step_display_latex(text: str) -> str:
     return _format_result_display_latex(s)
 
 
+def _pv_fraction_latex(term: str) -> str:
+    return rf"(\mathrm{{PV}})\frac{{1}}{{{term}}}"
+
+
+def _replace_pv_fraction_form(text: str, prefix: str, suffix: str) -> str:
+    """Convert PV(1/term)-style LaTeX into (PV) 1/term display notation."""
+    s = text
+    search_from = 0
+    while True:
+        start = s.find(prefix, search_from)
+        if start == -1:
+            return s
+
+        term_start = start + len(prefix)
+        depth = 0
+        term_end = None
+        for idx in range(term_start, len(s)):
+            ch = s[idx]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                if depth == 0:
+                    term_end = idx
+                    break
+                depth -= 1
+
+        if term_end is None:
+            return s
+
+        suffix_start = term_end + 1
+        suffix_end = suffix_start + len(suffix)
+        if suffix and s[suffix_start:suffix_end] != suffix:
+            search_from = term_start
+            continue
+
+        term = s[term_start:term_end]
+        replacement = _pv_fraction_latex(term)
+        if suffix:
+            s = s[:start] + replacement + s[suffix_end:]
+        else:
+            s = s[:start] + replacement + s[term_end + 1:]
+        search_from = start + len(replacement)
+
+
 def _format_result_display_latex(text: str) -> str:
     """Keep math unchanged while making common distribution notation more readable."""
     s = text
@@ -688,50 +732,26 @@ def _format_result_display_latex(text: str) -> str:
         )
     s = s.replace(r"\left|{\omega}\right|", r"|\omega|")
     s = s.replace(r"\operatorname{sign}{\left(\omega \right)}", r"\mathrm{sign}(\omega)")
-    pv_terms = [
-        r"\omega",
-        r"\omega^{2}",
-        r"\omega^{3}",
-        r"\omega^{4}",
-        r"\omega - 1",
-        r"\omega + 1",
-    ]
-    for term in pv_terms:
-        s = s.replace(
-            rf"\operatorname{{PV}}{{\left(\frac{{1}}{{{term}}} \right)}}",
-            rf"\mathrm{{PV}}\!\left(\frac{{1}}{{{term}}}\right)",
-        )
-        s = s.replace(
-            rf"\mathrm{{PV}}\frac{{1}}{{{term}}}",
-            rf"\mathrm{{PV}}\!\left(\frac{{1}}{{{term}}}\right)",
-        )
-    s = _regex.sub(
-        r"\\operatorname\{PV\}\{\\left\(\\frac\{1\}\{([^{}]+)\} \\right\)\}",
-        r"\\mathrm{PV}\\!\\left(\\frac{1}{\1}\\right)",
-        s,
-    )
-    s = _regex.sub(
-        r"\\mathrm\{PV\}\\frac\{1\}\{([^{}]+)\}",
-        r"\\mathrm{PV}\\!\\left(\\frac{1}{\1}\\right)",
-        s,
-    )
+    s = _replace_pv_fraction_form(s, r"\operatorname{PV}{\left(\frac{1}{", r" \right)}")
+    s = _replace_pv_fraction_form(s, r"\mathrm{PV}\!\left(\frac{1}{", r"\right)")
+    s = _replace_pv_fraction_form(s, r"\mathrm{PV}\frac{1}{", "")
     s = s.replace(
         r"- \frac{j}{\omega}",
-        r"- j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+        r"- j (\mathrm{PV})\frac{1}{\omega}",
     )
     s = s.replace(
         r"+ \frac{j}{\omega}",
-        r"+ j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+        r"+ j (\mathrm{PV})\frac{1}{\omega}",
     )
     s = _format_numeric_exponential_order(s)
     s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
     s = s.replace(
         r"- \frac{j}{\omega}",
-        r"- j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+        r"- j (\mathrm{PV})\frac{1}{\omega}",
     )
     s = s.replace(
         r"+ \frac{j}{\omega}",
-        r"+ j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+        r"+ j (\mathrm{PV})\frac{1}{\omega}",
     )
     return s
 

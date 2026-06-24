@@ -68,7 +68,7 @@ TEACHING_STEP_SNAPSHOTS = (
         "u(t)",
         (
             r"\textbf{Step 1: Identify the signal as a shifted unit step}",
-            r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+            r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,(\mathrm{PV})\frac{1}{\omega}",
             r"not absolutely integrable",
             r"Apply the time-shift property",
         ),
@@ -222,10 +222,12 @@ def _assert_teaching_result(case: FourierCase) -> None:
         ), f"{case.id} steps should explain the principal-value part"
 
     assert r"\operatorname{PV}" not in result_latex
+    assert r"\mathrm{PV}\!\left" not in result_latex
     assert r"\mathrm{PV}\frac" not in result_latex
     assert r"\operatorname{sign}" not in result_latex
     assert r"\left|{\omega}\right|" not in result_latex
     assert r"\delta^{\left(" not in result_latex
+    assert r"\mathrm{PV}\!\left" not in steps_latex
     assert r"\mathrm{PV}\frac" not in steps_latex
     assert "1t+" not in steps_latex
     assert "+-" not in steps_latex

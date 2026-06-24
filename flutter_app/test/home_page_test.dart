@@ -37,7 +37,7 @@ void main() {
   test('principal value notation is detected in result or steps', () {
     expect(
       containsPrincipalValueNotation(
-        resultLatex: r'\mathrm{PV}\!\left(\frac{1}{\omega}\right)',
+        resultLatex: r'(\mathrm{PV})\frac{1}{\omega}',
         stepsLatex: const [],
       ),
       isTrue,
