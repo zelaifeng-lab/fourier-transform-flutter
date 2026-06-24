@@ -551,6 +551,38 @@ class _FormulaPreview extends StatelessWidget {
         int i = 0;
         final buf = StringBuffer();
         while (i < input.length) {
+          if (input.startsWith('exp(', i)) {
+            i += 4; // after 'exp('
+            int depth = 1;
+            final argStart = i;
+            while (i < input.length) {
+              final ch = input[i];
+              if (ch == '(') depth++;
+              if (ch == ')') depth--;
+              if (depth == 0) break;
+              i++;
+            }
+
+            final complete = i < input.length && input[i] == ')';
+            var argRaw = input.substring(argStart, complete ? i : input.length);
+            final active = argRaw.contains('|');
+            argRaw = argRaw.replaceAll('|', '').trim();
+
+            String expLatex;
+            if (argRaw.isEmpty) {
+              expLatex = active ? r'\boxed{\phantom{0}}' : r'\square';
+            } else {
+              final inner = convert(argRaw);
+              expLatex = active ? (r'\boxed{' + inner + '}') : inner;
+            }
+
+            buf.write('e^{');
+            buf.write(expLatex);
+            buf.write('}');
+            if (complete) i++; // skip ')'
+            continue;
+          }
+
           if (input.startsWith('frac(', i)) {
             final localStart = i;
             i += 5;

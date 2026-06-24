@@ -126,6 +126,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('exp input previews as e power notation', (tester) async {
+    setSurfaceSize(tester, const Size(900, 900));
+
+    await tester.pumpWidget(const AppRoot());
+    await tester.pump();
+
+    await tester.tap(find.text('exp'));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ScrollableMathLine &&
+            widget.latex.contains('e^{') &&
+            !widget.latex.contains(r'\mathrm{exp}'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('next and previous buttons rotate preset examples', (
     tester,
   ) async {
