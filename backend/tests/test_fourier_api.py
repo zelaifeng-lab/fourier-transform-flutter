@@ -230,6 +230,7 @@ def _assert_teaching_result(case: FourierCase) -> None:
     assert "1t+" not in steps_latex
     assert "+-" not in steps_latex
     assert r"\pj" not in steps_latex
+    assert not _regex.search(r"e\^\{[+-]j\\omega\s+[-0-9]", result_latex + steps_latex)
     assert not _regex.search(r"(?<![A-Za-z])i(?![A-Za-z])", result_latex), (
         f"{case.id} result should use engineering j notation: {result_latex}"
     )

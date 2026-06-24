@@ -614,6 +614,36 @@ def _renumber_teaching_steps(steps: list[str]) -> list[str]:
     return out
 
 
+def _strip_step_heading(s: str) -> str:
+    m = _regex.match(r"^\\textbf\{Step\s+\d+:\s*(.*?)\}$", s)
+    if not m:
+        return s
+    return r"\text{" + m.group(1) + r"}"
+
+
+def _format_numeric_exponential_order(text: str) -> str:
+    def repl(match):
+        sign = match.group(1)
+        coeff = match.group(2).strip()
+        if coeff in ("0", "0.0"):
+            return "1"
+        if coeff == "1":
+            return rf"e^{{{sign}j\omega}}"
+        if coeff == "-1":
+            opposite = "-" if sign == "+" else ""
+            return rf"e^{{{opposite}j\omega}}"
+        if coeff.startswith("-"):
+            actual = "-" if sign == "+" else ""
+            coeff = coeff[1:].strip()
+        else:
+            actual = "-" if sign == "-" else ""
+        return rf"e^{{{actual}{coeff}j\omega}}"
+
+    numeric = r"(-?\d+(?:\.\d+)?|-?\\frac\{[^{}]+\}\{[^{}]+\})"
+    text = _regex.sub(rf"e\^\{{([+-])j\\omega\s+({numeric})\}}", repl, text)
+    return text
+
+
 def _step_start_definition(f):
     return [
         r"\textbf{Step 1: According to the Fourier transform definition}",
@@ -685,7 +715,24 @@ def _format_result_display_latex(text: str) -> str:
         r"\\mathrm{PV}\\!\\left(\\frac{1}{\1}\\right)",
         s,
     )
+    s = s.replace(
+        r"- \frac{j}{\omega}",
+        r"- j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+    )
+    s = s.replace(
+        r"+ \frac{j}{\omega}",
+        r"+ j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+    )
+    s = _format_numeric_exponential_order(s)
     s = _regex.sub(r"(?<![A-Za-z])i(?![A-Za-z])", "j", s)
+    s = s.replace(
+        r"- \frac{j}{\omega}",
+        r"- j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+    )
+    s = s.replace(
+        r"+ \frac{j}{\omega}",
+        r"+ j \mathrm{PV}\!\left(\frac{1}{\omega}\right)",
+    )
     return s
 
 
@@ -1005,6 +1052,14 @@ def _rule_rational_apart_linearity(f):
 
                     continue
 
+                if ss.startswith(r"\textbf{Step"):
+
+                    if "Use the known or previously derived transform" in ss:
+                        termwise_steps.append(r"\text{Use the known or previously derived transform of }g(t)")
+                    else:
+                        termwise_steps.append(_strip_step_heading(ss))
+                    continue
+
                 termwise_steps.append(ss)
 
 
@@ -1094,7 +1149,7 @@ def _rule_shifted_heaviside_distribution(f):
         r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
         r"\text{The PV term appears because }u(t)\text{ is not absolutely integrable over }(-\infty,\infty).",
         r"\textbf{Step 4: Apply the time-shift property}",
-        r"\mathcal{F}\{u(t-a)\}=e^{-j\omega a}\left(\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}\right)",
+        r"\mathcal{F}\{u(t-a)\}=e^{-j\omega a}\left(\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)\right)",
         r"\text{Substitute }a=" + latex(a_shift),
     ]
     steps += _step_final_result(X)
@@ -1132,6 +1187,7 @@ def _rule_finite_step_window(f):
         r"\textbf{Step 4: Replace the full integral by the interval integral}",
         r"X(\omega)=\int_{" + latex(a) + r"}^{" + latex(b) + r"}e^{-j\omega t}\,dt",
         r"\textbf{Step 5: Evaluate the exponential integral}",
+        r"\left[\frac{e^{-j\omega t}}{-j\omega}\right]_{" + latex(a) + r"}^{" + latex(b) + r"}",
         r"X(\omega)=\frac{e^{-j\omega " + latex(a) + r"}-e^{-j\omega " + latex(b) + r"}}{j\omega}",
     ]
     steps += _step_final_result(X)
@@ -1192,10 +1248,13 @@ def _rule_polynomial_finite_step_window(f):
             pieces.append(((-1)**m) * factorial(n) / factorial(n - m) * (x**(n - m)) / (k**(m + 1)))
         return exp(k*x) * Add(*pieces, evaluate=False)
 
+    antiderivative_parts = []
     X_parts = []
     for (degree,), coeff in poly.terms():
         n = int(degree)
+        antiderivative_parts.append(coeff * _anti_monomial(n, t))
         X_parts.append(coeff * (_anti_monomial(n, b) - _anti_monomial(n, a)))
+    anti = simplify(Add(*antiderivative_parts, evaluate=False))
     X = simplify(Add(*X_parts, evaluate=False))
     if isinstance(X, Piecewise):
         return None
@@ -1208,6 +1267,7 @@ def _rule_polynomial_finite_step_window(f):
         r"\textbf{Step 3: Replace the full integral by the finite interval}",
         r"X(\omega)=\int_{" + latex(a) + r"}^{" + latex(b) + r"}p(t)e^{-j\omega t}\,dt",
         r"\textbf{Step 4: Evaluate the finite polynomial integral}",
+        r"X(\omega)=\left[" + latex(anti) + r"\right]_{" + latex(a) + r"}^{" + latex(b) + r"}",
     ]
     steps += _step_final_result(X)
     return "closed_form", True, X, steps, "", None
