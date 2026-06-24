@@ -321,6 +321,24 @@ class _HomePageState extends State<HomePage> {
     _setExpr(next, cursor: argPos);
   }
 
+  void _insertExp() {
+    final before = _expr.substring(0, _cursor);
+    final after = _expr.substring(_cursor);
+    const insert = 'exp(□)';
+    final next = '$before$insert$after';
+    final argPos = before.length + 'exp('.length;
+    _setExpr(next, cursor: argPos);
+  }
+
+  void _insertPower() {
+    final before = _expr.substring(0, _cursor);
+    final after = _expr.substring(_cursor);
+    const insert = '^(□)';
+    final next = '$before$insert$after';
+    final argPos = before.length + '^('.length;
+    _setExpr(next, cursor: argPos);
+  }
+
   (int start, int comma, int end)? _nearestFrac() {
     final left = _expr.substring(0, _cursor);
     final idx = left.lastIndexOf('frac(');
@@ -441,6 +459,8 @@ class _HomePageState extends State<HomePage> {
                     onRight: _right,
                     onInsertFrac: _insertFrac,
                     onInsertAbs: _insertAbs,
+                    onInsertExp: _insertExp,
+                    onInsertPower: _insertPower,
                     onJumpNum: _jumpToNum,
                     onJumpDen: _jumpToDen,
                     currentExpr: _expr,
@@ -846,6 +866,8 @@ class _Keypad extends StatelessWidget {
 
   final VoidCallback onInsertFrac;
   final VoidCallback onInsertAbs;
+  final VoidCallback onInsertExp;
+  final VoidCallback onInsertPower;
   final VoidCallback onJumpNum;
   final VoidCallback onJumpDen;
 
@@ -860,6 +882,8 @@ class _Keypad extends StatelessWidget {
     required this.onRight,
     required this.onInsertFrac,
     required this.onInsertAbs,
+    required this.onInsertExp,
+    required this.onInsertPower,
     required this.onJumpNum,
     required this.onJumpDen,
     required this.currentExpr,
@@ -944,7 +968,7 @@ class _Keypad extends StatelessWidget {
             row([
               btn('sin', onTap: () => onInsert('sin(')),
               btn('cos', onTap: () => onInsert('cos(')),
-              btn('exp', onTap: () => onInsert('exp(')),
+              btn('exp', onTap: onInsertExp),
               btn('abs', onTap: onInsertAbs),
             ]),
             row([
@@ -980,7 +1004,7 @@ class _Keypad extends StatelessWidget {
               btn('0', onTap: () => onInsert('0')),
               btn('.', onTap: _dot),
               btn('-', onTap: () => onInsert('-')),
-              btn('^', onTap: () => onInsert('^')),
+              btn('^', onTap: onInsertPower),
             ]),
             Wrap(
               spacing: gap,

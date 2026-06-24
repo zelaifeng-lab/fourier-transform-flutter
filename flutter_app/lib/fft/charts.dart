@@ -50,7 +50,7 @@ class ResultsPage extends StatelessWidget {
           // left = Backend, right = Chart
           children: [
             SymbolPage(expression: expression),
-            StepPage(t: t, x: signal, dt: dt),
+            StepPage(t: t, x: signal, dt: dt, expression: expression),
           ],
         ),
       ),

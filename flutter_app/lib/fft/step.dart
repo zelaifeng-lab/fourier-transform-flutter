@@ -6,16 +6,37 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import '../responsive.dart';
 import '../scrollable_content.dart';
 
+const String _divergentSpectrumWarning =
+    'Warning: this signal grows as t -> -infinity, so its two-sided Fourier '
+    'integral does not converge. The numerical spectrum may be incomplete or '
+    'unstable. Try multiplying by u(t), for example t*exp(-t)*u(t).';
+
+bool _hasLeftDivergentExponential(String expression) {
+  final compact = expression.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+  if (compact.isEmpty) return false;
+  if (compact.contains('u(') || compact.contains('abs(')) return false;
+  if (compact.contains('exp(-t^') || compact.contains('exp(-(t^')) {
+    return false;
+  }
+
+  final decayingOneSided = RegExp(
+    r'exp\(-(?!(?:i|j)\*?t\))(?:(?:\d+(?:\.\d+)?|a)\*)?t\)',
+  );
+  return decayingOneSided.hasMatch(compact);
+}
+
 class StepPage extends StatefulWidget {
   final List<double> t;
   final List<double> x;
   final double dt;
+  final String expression;
 
   const StepPage({
     super.key,
     required this.t,
     required this.x,
     required this.dt,
+    this.expression = '',
   });
 
   @override
@@ -313,10 +334,20 @@ class _StepPageState extends State<StepPage> {
               children: [
                 Text(
                   _sweepLoading
-                      ? 'Computing…'
-                      : 'Computed with ${_sweepOmega.length} ω points, time stride=$_timeStride (downsampled for speed).',
+                      ? 'Computing...'
+                      : 'Computed with ${_sweepOmega.length} omega points, time stride=$_timeStride (downsampled for speed).',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (_hasLeftDivergentExponential(widget.expression)) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _divergentSpectrumWarning,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 SizedBox(
                   height: AppBreakpoints.chartHeight(

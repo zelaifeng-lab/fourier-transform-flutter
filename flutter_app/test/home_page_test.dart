@@ -126,12 +126,55 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('exp input previews as e power notation', (tester) async {
+  testWidgets('power input keeps multi-digit exponent until arrow exit', (
+    tester,
+  ) async {
     setSurfaceSize(tester, const Size(900, 900));
 
     await tester.pumpWidget(const AppRoot());
     await tester.pump();
 
+    await tester.tap(find.text('AC'));
+    await tester.pump();
+    await tester.tap(find.text('t'));
+    await tester.tap(find.text('^'));
+    await tester.tap(find.text('2'));
+    await tester.tap(find.text('3'));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ScrollableMathLine &&
+            widget.latex.contains('t^{') &&
+            widget.latex.contains('23'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text(String.fromCharCode(0x27F6)));
+    await tester.tap(find.text(String.fromCharCode(0x00D7)));
+    await tester.tap(find.text('u(t)'));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ScrollableTextLine && widget.text == 't^(23)*u(t)',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('exp input uses exponent placeholder and arrow exit', (tester) async {
+    setSurfaceSize(tester, const Size(900, 900));
+
+    await tester.pumpWidget(const AppRoot());
+    await tester.pump();
+
+    await tester.tap(find.text('AC'));
+    await tester.pump();
     await tester.tap(find.text('exp'));
     await tester.pump();
 
@@ -141,6 +184,19 @@ void main() {
             widget is ScrollableMathLine &&
             widget.latex.contains('e^{') &&
             !widget.latex.contains(r'\mathrm{exp}'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('-'));
+    await tester.tap(find.text('t'));
+    await tester.tap(find.text(String.fromCharCode(0x27F6)));
+    await tester.tap(find.text(String.fromCharCode(0x00D7)));
+    await tester.tap(find.text('u(t)'));
+    await tester.pump();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ScrollableTextLine && widget.text == 'exp(-t)*u(t)',
       ),
       findsOneWidget,
     );
@@ -238,6 +294,43 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('ft steps page warns for left-divergent exponential spectra', (
+    tester,
+  ) async {
+    setSurfaceSize(tester, const Size(900, 900));
+
+    final t = List<double>.generate(96, (i) => -2.4 + i * 0.05);
+    final x = t.map((v) => v * math.exp(-v)).toList();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StepPage(t: t, x: x, dt: 0.05, expression: 't*exp(-t)'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.textContaining('two-sided Fourier integral does not converge'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StepPage(t: t, x: x, dt: 0.05, expression: 't*exp(-t)*u(t)'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.textContaining('two-sided Fourier integral does not converge'),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'ft steps page keeps long formulas scrollable on narrow screens',
