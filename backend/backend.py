@@ -4,6 +4,7 @@ import time
 import contextvars
 import uuid
 import re as _regex
+from threading import RLock
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -17,22 +18,22 @@ from sympy.parsing.sympy_parser import (
 )
 
 # ============================================================
-# Fourier Backend (Engineering Convention, 蠅 real)
-#   X(蠅) = 鈭玙{-鈭瀩^{鈭瀩 x(t) e^{-j 蠅 t} dt , 蠅 鈭?鈩?
+# Fourier Backend (engineering convention, omega real)
+#   X(omega) = integral_{-infinity}^{infinity} x(t)e^{-j omega t} dt
 #
 # User conventions:
-#   - Convolution uses '路' (U+00B7) ONLY
+#   - Convolution separators are normalized to U+2022 internally
 #   - Multiplication uses '*' (or implicit multiplication)
 #
 # Policy:
-#   - Force 蠅 real (avoid complex-蠅 arg(...) artifacts)
+#   - Force omega real (avoid complex-omega arg(...) artifacts)
 #   - For ANY expression containing trig, first rewrite to complex exponentials.
-#     If it becomes a finite sum of pure tones C_k e^{j 蠅_k t}, return the
+#     If it becomes a finite sum of pure tones C_k e^{j omega_k t}, return the
 #     distribution result via the definition integral:
-#         鈭?e^{-j(蠅-蠅0)t} dt = 2蟺 未(蠅-蠅0)
+#         integral e^{-j(omega-omega0)t} dt = 2*pi*delta(omega-omega0)
 #   - Otherwise fall back to property rules + integral fallback.
 # ============================================================
-#(Engineering Convention, 蠅 real)
+# (Engineering convention, omega real)
 app = FastAPI(title="Fourier Backend ")
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,11 +41,11 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://zelaifeng-lab.github.io",   # 浣犵殑 GitHub Pages 鍩熷悕
+        "https://zelaifeng-lab.github.io",   # GitHub Pages frontend
     ],
     allow_credentials=True,
-    allow_methods=["*"],   # 鍏佽 POST/OPTIONS 绛?
-    allow_headers=["*"],   # 鍏佽 Content-Type 绛?
+    allow_methods=["*"],   # allow POST/OPTIONS
+    allow_headers=["*"],   # allow Content-Type
 )
 
 
@@ -81,16 +82,16 @@ APART_FULL_DEFAULT = False  # always keep real-field partial fractions (avoid Ro
 # ===== Omega-real cleanup (avoid Piecewise/arg/RootSum) =====
 def _omega_real_cleanup(expr):
     """
-    Post-process SymPy outputs assuming 蠅 is real:
-    - replace 蠅/|蠅| with sign(蠅)
-    - drop Piecewise branches that only special-case 蠅=0 (removable after sign rewrite)
+    Post-process SymPy outputs assuming omega is real:
+    - replace omega/Abs(omega) with sign(omega)
+    - drop Piecewise branches that only special-case omega=0 (removable after sign rewrite)
     """
     try:
         expr = expr.subs(omega/Abs(omega), sign(omega))
         expr = expr.subs(-omega/Abs(omega), -sign(omega))
         expr = expr.subs(Abs(omega)/omega, sign(omega))
 
-        # Replace Abs(蠅)*蠅**(-1) patterns with sign(蠅)
+        # Replace Abs(omega)*omega**(-1) patterns with sign(omega)
         def _abs_over_omega_to_sign(e):
             if not isinstance(e, Mul):
                 return e
@@ -203,33 +204,42 @@ def _tb_make_steps(*, recognize_lines, strategy_lines, pair_lines, combine_lines
     steps.extend([s for s in (combine_lines or []) if s])
 
     steps.append(r"\textbf{Final Result}")
-    steps.append(r"X(蠅)=" + latex(final_expr))
+    steps.append(r"X(\omega)=" + latex(final_expr))
     return steps
 
 
 # ---------- lightweight caches for expensive SymPy operations ----------
+_CACHE_LOCK = RLock()
+_CACHE_MAX_SIZE = 512
 _TOGETHER_CACHE = {}
 _APART_CACHE = {}
 
+def _cache_store(cache, key, value):
+    with _CACHE_LOCK:
+        if len(cache) >= _CACHE_MAX_SIZE:
+            cache.clear()
+        cache[key] = value
+    return value
+
 def _together_cached(expr):
     key = srepr(expr)
-    v = _TOGETHER_CACHE.get(key)
-    if v is not None:
-        return v
+    with _CACHE_LOCK:
+        v = _TOGETHER_CACHE.get(key)
+        if v is not None:
+            return v
     with _PerfTimer("sympy.together", info=str(expr)[:80]):
         v = together(expr)
-    _TOGETHER_CACHE[key] = v
-    return v
+    return _cache_store(_TOGETHER_CACHE, key, v)
 
 def _apart_cached(expr):
     key = srepr(expr)
-    v = _APART_CACHE.get(key)
-    if v is not None:
-        return v
+    with _CACHE_LOCK:
+        v = _APART_CACHE.get(key)
+        if v is not None:
+            return v
     with _PerfTimer("sympy.apart", info=str(expr)[:80]):
         v = apart(expr, t, full=APART_FULL_DEFAULT)
-    _APART_CACHE[key] = v
-    return v
+    return _cache_store(_APART_CACHE, key, v)
 
 
 def _apart_real_roots(expr):
@@ -451,7 +461,7 @@ def _split_convolution_top_level(s: str):
             depth -= 1
         if depth != 0:
             continue
-        if ch == "•":
+        if ch == "\u2022":
             left = s[:i].strip()
             right = s[i + 1 :].strip()
             if left and right:
@@ -661,7 +671,7 @@ def _step_final_result(X):
 
 def _format_step_display_latex(text: str) -> str:
     """Use consistent teaching notation in steps: u(t) for steps and j for engineering convention."""
-    s = text.replace("ω", r"\omega").replace("蠅", r"\omega")
+    s = text.replace("\u03c9", r"\omega").replace("\u8805", r"\omega")
     s = _regex.sub(r"\\theta\\left\((.*?)\\right\)", r"u(\1)", s)
     s = s.replace(r"e^{-i", r"e^{-j")
     s = s.replace(r"e^{i", r"e^{j")
@@ -761,7 +771,7 @@ def _try_trig_as_exp_distribution(f):
     """
     Robust trig -> exp -> pure-tone detection.
 
-    Also has a guaranteed path for sin(a*t+b) / cos(a*t+b) to avoid SymPy's arg(蠅) Piecewise.
+    Also has a guaranteed path for sin(a*t+b) / cos(a*t+b) to avoid SymPy's arg(omega) Piecewise.
 
     NOTE: This function is "steps-only refactor": computation is unchanged, only steps text is made
     textbook-like.
@@ -833,7 +843,7 @@ def _try_trig_as_exp_distribution(f):
             return False
 
         if rest == 1:
-            # constant term -> would transform to delta(蠅); but keep this function for pure tones only
+            # constant term -> would transform to delta(omega); but keep this function for pure tones only
             return None
 
         if isinstance(rest, Mul):
@@ -864,7 +874,7 @@ def _try_trig_as_exp_distribution(f):
             coeff = simplify(coeff * exp(I*phi))
         pairs.append((coeff, w))
 
-    # Build X(蠅)=鈭?2蟺 Ck 未(蠅-wk)
+    # Build X(omega)=sum 2*pi*Ck*delta(omega-wk)
     X = 0
     for Ck, wk in pairs:
         X += simplify(2*pi*Ck*DiracDelta(omega - wk))
@@ -890,7 +900,7 @@ def _rule_linear_over_t2_plus_c(f):
       (a*t + b)/(t^2 + c), c>0
 
     F{(a t + b)/(t^2 + c)} =
-      蟺 e^{-鈭歝 |蠅|} ( b/鈭歝 - i a sign(蠅) )
+      pi*exp(-sqrt(c)*Abs(omega))*(b/sqrt(c) - j*a*sign(omega))
     """
     try:
         num, den = fraction(together(f))
@@ -1083,7 +1093,7 @@ def _rule_rational_apart_linearity(f):
                 termwise_steps.append(ss)
 
 
-            termwise_steps.append(r"\Rightarrow\; X_{%d}(蠅)=%s" % (k, latex(Xk)))
+            termwise_steps.append(r"\Rightarrow\; X_{%d}(\omega)=%s" % (k, latex(Xk)))
 
 
         X = _omega_real_cleanup(Add(*X_terms, evaluate=False))
@@ -1811,7 +1821,7 @@ def _rule_time_multiply_closed_form(f):
 def _derive_with_properties(f):
     """
     Returns: (form, ok, X_expr, steps_latex, conditions_latex, error_or_None)
-    form 鈭?{"closed_form","integral_form","distribution_form","divergent"}
+    form in {"closed_form", "integral_form", "distribution_form", "divergent"}
     """
 
     # 0) Trig-first policy (user request)
@@ -1890,7 +1900,7 @@ def _derive_with_properties(f):
         return trig_res
 
 
-    # --- Known pair: 1/(t^2 + c), c>0 (force 蠅 real; avoid half-branch Piecewise) ---
+    # --- Known pair: 1/(t^2 + c), c>0 (force omega real; avoid half-branch Piecewise) ---
     # Covers 1/(t^2+1), 1/(t^2+6), 1/(t^2+a^2) (interpreted as c=a^2).
     try:
         num, den = fraction(together(f))
@@ -1905,13 +1915,6 @@ def _derive_with_properties(f):
                     if c_pos or (c.is_Number and float(c) > 0) or (c.is_Pow and c.exp == 2):
                         alpha = simplify(sqrt(c))
                         X = simplify(pi/alpha * exp(-alpha*Abs(omega)))
-                        # Use Unicode 蠅 in steps to avoid flutter_math_fork \omega parser issues.
-                        steps = [
-                            r"X(蠅)=\int_{-\infty}^{\infty}x(t)\,e^{-i蠅 t}\,dt",
-                            rf"x(t)=\frac{{1}}{{t^{{2}}+{latex(c)}}}",
-                            rf"\Rightarrow\;X(蠅)=\int_{{-\infty}}^{{\infty}}\frac{{e^{{-i蠅 t}}}}{{t^{{2}}+{latex(c)}}}\,dt\;\;({latex(c)}>0)",
-                            rf"X(蠅)=\frac{{\pi}}{{{latex(alpha)}}}e^{{-{latex(alpha)}|蠅|}}",
-                        ]
                         X = _omega_real_cleanup(X)
                         steps = _step_start_definition(f)
                         steps += [
@@ -1942,7 +1945,7 @@ def _derive_with_properties(f):
 
 
     # 0.5) Constant (distribution)
-    # x(t)=C  -> X(蠅)=2蟺 C 未(蠅)
+    # x(t)=C  -> X(omega)=2*pi*C*delta(omega)
     if f.free_symbols.isdisjoint({t}):
         X = simplify(2*pi*f*DiracDelta(omega))
         steps = _step_start_definition(f)
@@ -1974,7 +1977,7 @@ def _derive_with_properties(f):
                 steps += _step_final_result(X)
                 return "distribution_form", True, X, steps, "", None
             if a == -1:
-                # 未(-t + b) = 未(t-b)
+                # delta(-t + b) = delta(t-b)
                 t0 = b
                 X = simplify(exp(-I*omega*t0))
                 steps = _step_start_definition(f)
@@ -2001,7 +2004,7 @@ def _derive_with_properties(f):
         if a_shift is not None:
             base = simplify(pi*DiracDelta(omega) - I*(1/omega))
             # Use PV via sign rule? We'll keep PV as 1/omega with distribution note.
-            # More standard: 蟺未(蠅) - j PV(1/蠅). Here we show as 蟺未(蠅) - i*PV(1/蠅).
+            # Standard form: pi*delta(omega) - j*PV(1/omega).
             X = simplify(pi*DiracDelta(omega) - I*sign(omega)*0)  # placeholder to keep simplify stable
             X = pi*DiracDelta(omega) - I* (1/omega)
             steps = [
@@ -2024,7 +2027,7 @@ def _derive_with_properties(f):
             lin = _as_linear_in_t(g.args[0])
             if lin is not None:
                 acoef, b = lin  # exponent = acoef*t + b
-                # x(t)=e^{a t + b}u(t) -> e^{b} /(j蠅 - a)
+                # x(t)=e^{a t + b}u(t) -> e^{b} /(j*omega - a)
                 X = simplify(exp(b) / (I*omega - acoef))
                 condition_latex = ""
                 if acoef.free_symbols:
@@ -2062,7 +2065,7 @@ def _derive_with_properties(f):
                 ]
             return "closed_form", True, X, steps, r"a>0", None
 
-    # 0.10) Pure tone exp(I*蠅0*t + I*蠁)
+    # 0.10) Pure tone exp(I*w0*t + I*phi)
     if f.func == exp and len(f.args)==1:
         inside = simplify(f.args[0]/I)
         if not inside.has(I):
@@ -2082,7 +2085,7 @@ def _derive_with_properties(f):
                 steps += _step_final_result(X)
                 return "distribution_form", True, X, steps, "", None
 
-    # 0.11) t^n * exp(I*蠅0*t) (frequency differentiation)
+    # 0.11) t^n * exp(I*w0*t) (frequency differentiation)
     if isinstance(f, Mul):
         # look for exp(I*w0*t) factor and t**n
         exp_factor = None
@@ -2143,7 +2146,7 @@ def _derive_with_properties(f):
 
 
     # 2) PV rational distributions: 1/(t+a), 1/(t+a)^2
-    # Allow an overall constant factor c: F{c*g(t)} = c*G(蠅)
+    # Allow an overall constant factor c: F{c*g(t)} = c*G(omega)
     c0 = 1
     f0 = f
     if isinstance(f, Mul):
@@ -2265,9 +2268,9 @@ def _derive_with_properties(f):
                 r"\textbf{Step 2: Determine the nonzero interval}",
                 r"x(t)=1\;\;\text{for }t\in[" + latex(a) + "," + latex(b) + r"],\;\;0\text{ otherwise}",
                 r"\textbf{Step 3: Write the Fourier transform integral}",
-                r"X(蠅)=\int_{" + latex(a) + r"}^{" + latex(b) + r"} e^{-i蠅 t}\,dt",
+                r"X(\omega)=\int_{" + latex(a) + r"}^{" + latex(b) + r"} e^{-j\omega t}\,dt",
                 r"\textbf{Step 4: Evaluate the integral}",
-                r"X(蠅)=\frac{e^{-i蠅 " + latex(a) + r"}-e^{-i蠅 " + latex(b) + r"}}{i蠅}\quad(\text{with distributional interpretation at }蠅=0)",
+                r"X(\omega)=\frac{e^{-j\omega " + latex(a) + r"}-e^{-j\omega " + latex(b) + r"}}{j\omega}\quad(\text{with distributional interpretation at }\omega=0)",
                 r"\textbf{Final Result}",
                 r"X(\omega)=" + latex(X_sum),
                 ]
@@ -2381,7 +2384,7 @@ def fourier(req: FourierRequest):
 
         )
 
-    # Convolution: only '路'
+    # Convolution uses the normalized U+2022 separator internally.
     conv = _split_convolution_top_level(raw)
     if conv is not None:
         left_s, right_s = conv
@@ -2560,7 +2563,7 @@ def _rule_modulated_step(f):
 
 
 def _rule_bspline2(f):
-    if str(f).replace(" ","") in ["Heaviside(t)鈥eaviside(t)","Heaviside(t).Heaviside(t)"]:
+    if str(f).replace(" ","") in ["Heaviside(t)*Heaviside(t)", "Heaviside(t)**2", "Heaviside(t).Heaviside(t)"]:
         return _rule_shifted_poly_u_explicit(t*Heaviside(t))
     return None
 
@@ -2665,7 +2668,7 @@ def _rule_shifted_poly_times_step_distribution(f):
 def _rule_poly_times_step_distribution(f):
     """
     Explicit distribution for t^n * Heaviside(t):
-      F{t^n u(t)} = 蟺 j^n 未^{(n)}(蠅) + (-1)^n j^{n-1} n! PV(1/蠅^{n+1})
+      F{t^n u(t)} = pi*j^n*delta^{(n)}(omega) + (-1)^n*j^{n-1}*n!*PV(1/omega^{n+1})
     """
     if not (isinstance(f, Mul) and f.has(Heaviside)):
         return None
@@ -2684,7 +2687,7 @@ def _rule_poly_times_step_distribution(f):
         return None
     X, degree_values = base
     steps = [
-        r"\textbf{Method: Distribution rule (polynomial 脳 step)}",
+        r"\textbf{Method: Distribution rule (polynomial times step)}",
         r"x(t)=p(t)u(t),\;p(t)=" + latex(g),
         r"\mathcal{F}\{u(t)\}=\pi\delta(\omega)-j\,\mathrm{PV}\!\left(\frac{1}{\omega}\right)",
         r"\mathcal{F}\{t^n u(t)\}=\pi j^n\delta^{(n)}(\omega)+(-1)^n j^{\,n-1}n!\,\mathrm{PV}\!\left(\frac{1}{\omega^{n+1}}\right)",
@@ -2757,14 +2760,14 @@ def _rule_trig_times_step_distribution(f):
     cc = simplify(step_shift)
     shifted_phase = simplify(aa*cc + bb)
 
-    # helper: F{e^{j蠅0 t}u(t)} = 蟺未(蠅-蠅0) - j PV(1/(蠅-蠅0))
+    # helper: F{e^{j*w0*t}u(t)} = pi*delta(omega-w0) - j*PV(1/(omega-w0))
     def _Ushift(w0):
         return pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
 
     if trig == "sin":
         X = simplify((exp(I*shifted_phase)*_Ushift(aa) - exp(-I*shifted_phase)*_Ushift(-aa)) / (2*I))
         steps = [
-            r"\textbf{Method: Distribution rule (trig 脳 step)}",
+            r"\textbf{Method: Distribution rule (trig times step)}",
             _linear_phase_display("sin", aa, bb) + r"u(t)",
             r"\sin(\theta)=\frac{e^{j\theta}-e^{-j\theta}}{2j}",
             r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
@@ -2774,7 +2777,7 @@ def _rule_trig_times_step_distribution(f):
     else:
         X = simplify((exp(I*shifted_phase)*_Ushift(aa) + exp(-I*shifted_phase)*_Ushift(-aa)) / 2)
         steps = [
-            r"\textbf{Method: Distribution rule (trig 脳 step)}",
+            r"\textbf{Method: Distribution rule (trig times step)}",
             _linear_phase_display("cos", aa, bb) + r"u(t)",
             r"\cos(\theta)=\frac{e^{j\theta}+e^{-j\theta}}{2}",
             r"\mathcal{F}\{e^{j\omega_0 t}u(t)\}=\pi\delta(\omega-\omega_0)-j\,\mathrm{PV}\!\left(\frac{1}{\omega-\omega_0}\right)",
@@ -2826,7 +2829,7 @@ def _rule_trig_times_step_distribution(f):
 def _rule_poly_distribution(f):
     """
     Distribution for pure polynomials t^n (no step):
-      F{t^n} = 2蟺 i^n 未^{(n)}(蠅)
+      F{t^n} = 2*pi*j^n*delta^{(n)}(omega)
     """
     if f == t:
         n = 1
@@ -2852,7 +2855,7 @@ def _rule_poly_distribution(f):
 
 
 def _rule_pv_reciprocal(f):
-    """
+    r"""
     PV distribution for 1/(a*t+b) (includes 1/(t+a)).
 
     Convention:

@@ -9,3 +9,5 @@ flutter_app/.dart_tool/
 *.pdf
 AGENTS.md
 docs/QA_email_brief.md
+.codex_render*/
+tools/_tmp_*.py
