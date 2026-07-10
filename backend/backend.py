@@ -418,6 +418,7 @@ def _parse_sympy(expr_str: str):
         "Heaviside": Heaviside,
         "DiracDelta": DiracDelta,
         "I": I,
+        "j": I,
         "exp": exp,
         "sin": sin,
         "cos": cos,

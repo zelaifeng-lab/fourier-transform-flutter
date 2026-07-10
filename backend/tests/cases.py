@@ -292,6 +292,17 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     ),
     FourierCase(
         "PR06",
+        "exp(j*3*t)*exp(-(t+1)^2)",
+        "property_modulation_time_shift",
+        (r"\omega - 3", "sqrt", "pi", r"e^{j \left(\omega - 3\right)}"),
+        expected_steps_contains=(
+            r"\textbf{Step 2: Identify a modulation factor}",
+            r"\omega_0=3,\quad \phi=0",
+            r"G(\omega)=\sqrt{\pi} e^{- \frac{\omega^{2}}{4}} e^{j \omega}",
+        ),
+    ),
+    FourierCase(
+        "PR06",
         "t*exp(-t^2)",
         "property_time_multiplication",
         ("j", "sqrt", "pi", "omega"),

@@ -117,7 +117,8 @@ class _HomePageState extends State<HomePage> {
       title: 'Uncentered shifted ramp',
       category: 'Shifted polynomial step',
       inputLatex: r'tu(t-2)',
-      description: 'Shows how the polynomial changes after shifting the step edge.',
+      description:
+          'Shows how the polynomial changes after shifting the step edge.',
     ),
     FourierExample(
       expression: 'sin(3*t+2)',
@@ -152,7 +153,8 @@ class _HomePageState extends State<HomePage> {
       title: 'Shifted one-sided cosine',
       category: 'Trig times shifted step',
       inputLatex: r'\cos(2t+1)u(t-3)',
-      description: 'A one-sided trigonometric signal with both phase and shift.',
+      description:
+          'A one-sided trigonometric signal with both phase and shift.',
     ),
     FourierExample(
       expression: 'exp(I*(5*t+2))',
@@ -180,14 +182,16 @@ class _HomePageState extends State<HomePage> {
       title: 'Parameterized two-sided exponential',
       category: 'Even integrable signal',
       inputLatex: r'e^{-a|t|}',
-      description: 'A two-sided decaying exponential with a symbolic parameter.',
+      description:
+          'A two-sided decaying exponential with a symbolic parameter.',
     ),
     FourierExample(
       expression: 'exp(I*3*t)*exp(-(t+1)^2)',
       title: 'Modulated shifted Gaussian',
       category: 'Gaussian plus modulation',
       inputLatex: r'e^{j3t}e^{-(t+1)^2}',
-      description: 'Uses modulation and time shift on a Gaussian transform pair.',
+      description:
+          'Uses modulation and time shift on a Gaussian transform pair.',
     ),
     FourierExample(
       expression: 't*exp(-t^2)',
@@ -229,7 +233,8 @@ class _HomePageState extends State<HomePage> {
       title: 'High-order rational combination',
       category: 'Partial fractions',
       inputLatex: r'\frac{t^5+t^4+t^3}{(t+1)(t^2+1)(t+6)(t^2+6)}',
-      description: 'A larger rational example that combines several rule families.',
+      description:
+          'A larger rational example that combines several rule families.',
     ),
     FourierExample(
       expression: 'frac(sin(a*t),pi*t)',
@@ -406,37 +411,73 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _FormulaPreview(
-                          expression: _expr,
-                          cursor: _cursor,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 112,
-                            child: OutlinedButton(
-                              onPressed: _prevExample,
-                              child: const Text('Previous'),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final available = constraints.maxWidth.isFinite
+                          ? constraints.maxWidth
+                          : MediaQuery.sizeOf(context).width;
+                      final navWidth = (available * 0.18)
+                          .clamp(58.0, 96.0)
+                          .toDouble();
+                      final navHeight = (navWidth * 0.56)
+                          .clamp(40.0, 48.0)
+                          .toDouble();
+                      final navFont = (navWidth * 0.17)
+                          .clamp(11.0, 14.0)
+                          .toDouble();
+
+                      Widget navButton(String label, VoidCallback onPressed) {
+                        return SizedBox(
+                          width: navWidth,
+                          height: navHeight,
+                          child: OutlinedButton(
+                            onPressed: onPressed,
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: navWidth < 72 ? 4 : 8,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: navFont,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: 112,
-                            child: OutlinedButton(
-                              onPressed: _nextExample,
-                              child: const Text('Next'),
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _FormulaPreview(
+                              expression: _expr,
+                              cursor: _cursor,
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              navButton(
+                                navWidth < 74 ? 'Prev' : 'Previous',
+                                _prevExample,
+                              ),
+                              const SizedBox(height: 8),
+                              navButton('Next', _nextExample),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -911,16 +952,28 @@ class _Keypad extends StatelessWidget {
     String label, {
     required VoidCallback onTap,
     required double width,
+    required double height,
+    required double fontSize,
+    required double gap,
     bool wide = false,
   }) {
     return SizedBox(
-      width: wide ? (width * 2 + 8) : width,
-      height: 54,
+      width: wide ? (width * 2 + gap) : width,
+      height: height,
       child: OutlinedButton(
         onPressed: onTap,
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        style: OutlinedButton.styleFrom(
+          padding: EdgeInsets.symmetric(horizontal: width < 62 ? 4 : 8),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600),
+          ),
         ),
       ),
     );
@@ -930,15 +983,20 @@ class _Keypad extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 8.0;
         final available = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final buttonWidth = ((available - gap * 3) / 4).clamp(64.0, 96.0);
+        final gap = available < 360 ? 6.0 : 8.0;
+        final rawButtonWidth = (available - gap * 3) / 4;
+        final buttonWidth = rawButtonWidth <= 44
+            ? rawButtonWidth.clamp(32.0, 44.0).toDouble()
+            : rawButtonWidth.clamp(44.0, 96.0).toDouble();
+        final buttonHeight = (buttonWidth * 0.68).clamp(42.0, 54.0).toDouble();
+        final buttonFont = (buttonWidth * 0.24).clamp(13.0, 18.0).toDouble();
 
         Widget row(List<Widget> children) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: gap),
+            padding: EdgeInsets.only(bottom: gap),
             child: Wrap(spacing: gap, runSpacing: gap, children: children),
           );
         }
@@ -948,7 +1006,15 @@ class _Keypad extends StatelessWidget {
           required VoidCallback onTap,
           bool wide = false,
         }) {
-          return _btn(label, onTap: onTap, width: buttonWidth, wide: wide);
+          return _btn(
+            label,
+            onTap: onTap,
+            width: buttonWidth,
+            height: buttonHeight,
+            fontSize: buttonFont,
+            gap: gap,
+            wide: wide,
+          );
         }
 
         return Column(

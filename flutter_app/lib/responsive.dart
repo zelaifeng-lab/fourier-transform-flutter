@@ -11,7 +11,12 @@ class AppBreakpoints {
   }
 
   static EdgeInsets pagePadding(double width) {
-    if (compact(width)) return const EdgeInsets.all(12);
+    if (compact(width)) {
+      return EdgeInsets.symmetric(
+        horizontal: width < 390 ? 8 : 10,
+        vertical: 12,
+      );
+    }
     if (medium(width)) return const EdgeInsets.all(20);
     return const EdgeInsets.symmetric(horizontal: 28, vertical: 24);
   }

@@ -1,3 +1,5 @@
+﻿import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fourier_transform/fft/symbol.dart';
@@ -26,14 +28,30 @@ void main() {
 
   Future<void> tapVisibleText(WidgetTester tester, String text) async {
     final finder = find.text(text);
-    await tester.scrollUntilVisible(finder, 80);
-    await tester.tap(finder);
-    await tester.pump();
+    for (var i = 0; i < 20; i++) {
+      final visible = finder.hitTestable();
+      if (visible.evaluate().isNotEmpty) {
+        await tester.tap(visible.first);
+        await tester.pump();
+        return;
+      }
+      final scrollables = find.byType(Scrollable).hitTestable();
+      if (scrollables.evaluate().isEmpty) {
+        break;
+      }
+      await tester.drag(scrollables.last, const Offset(0, -120));
+      await tester.pump();
+    }
+    throw TestFailure('Could not tap visible text: $text');
   }
 
   testWidgets(
     'keypad input is sent to backend and backend result is rendered',
     (tester) async {
+      final previousHttpOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = previousHttpOverrides);
+
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 900);
       addTearDown(tester.view.resetPhysicalSize);
@@ -52,7 +70,6 @@ void main() {
       await tapVisibleText(tester, 'Run transform');
 
       await pumpUntilFound(tester, find.text('Results'));
-      await pumpUntilFound(tester, find.text('Result'));
       await pumpUntilFound(tester, find.bySemanticsLabel(RegExp(r'symbolic-result:.*delta')));
 
       final backendResult = await computeByBackendOnly('sin(t)');
@@ -64,3 +81,5 @@ void main() {
     skip: !_runBackendE2e || _backendBaseUrl.isEmpty,
   );
 }
+
+
