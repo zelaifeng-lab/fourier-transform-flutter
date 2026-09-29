@@ -28,16 +28,15 @@ class _ScrollableMathLineState extends State<ScrollableMathLine> {
 
   @override
   Widget build(BuildContext context) {
-    final line = Scrollbar(
-      controller: _controller,
-      thumbVisibility: true,
+    final line = ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: SingleChildScrollView(
         controller: _controller,
         scrollDirection: Axis.horizontal,
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Math.tex(
-            widget.latex,
+            widget.latex.replaceAll(r'\bullet', r'\ast'),
             textStyle:
                 widget.textStyle ?? Theme.of(context).textTheme.bodyLarge,
           ),
@@ -80,9 +79,8 @@ class _ScrollableTextLineState extends State<ScrollableTextLine> {
 
   @override
   Widget build(BuildContext context) {
-    final line = Scrollbar(
-      controller: _controller,
-      thumbVisibility: true,
+    final line = ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
       child: SingleChildScrollView(
         controller: _controller,
         scrollDirection: Axis.horizontal,

@@ -63,19 +63,18 @@ void main() {
   ) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: Scaffold(
-          body: PrincipalValueNotice(visible: true),
-        ),
+        home: Scaffold(body: PrincipalValueNotice(visible: true)),
       ),
     );
     expect(find.byKey(const Key('principal-value-notice')), findsOneWidget);
-    expect(find.textContaining('PV means Cauchy principal value'), findsOneWidget);
+    expect(
+      find.textContaining('PV means Cauchy principal value'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(
       const MaterialApp(
-        home: Scaffold(
-          body: PrincipalValueNotice(visible: false),
-        ),
+        home: Scaffold(body: PrincipalValueNotice(visible: false)),
       ),
     );
     expect(find.byKey(const Key('principal-value-notice')), findsNothing);
@@ -167,7 +166,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('exp input uses exponent placeholder and arrow exit', (tester) async {
+  testWidgets('exp input uses exponent placeholder and arrow exit', (
+    tester,
+  ) async {
     setSurfaceSize(tester, const Size(900, 900));
 
     await tester.pumpWidget(const AppRoot());
@@ -224,7 +225,6 @@ void main() {
     expect(find.textContaining('Example 1/25'), findsOneWidget);
     expect(_currentExampleFormula('sign(t-2)'), findsOneWidget);
   });
-
 
   testWidgets('all preset examples render without math parser exceptions', (
     tester,
@@ -290,7 +290,24 @@ void main() {
       expect(find.byType(ScrollableMathLine), findsNWidgets(2));
       expect(find.byType(ScrollableTextLine), findsOneWidget);
       expect(find.byType(BoundedScrollableText), findsNothing);
-      expect(find.byType(Scrollbar), findsAtLeastNWidgets(3));
+      expect(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is ScrollableMathLine || widget is ScrollableTextLine,
+          ),
+          matching: find.byType(Scrollbar),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.horizontal,
+        ),
+        findsAtLeastNWidgets(3),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -349,7 +366,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.byType(ScrollableMathLine), findsAtLeastNWidgets(8));
-      expect(find.byType(Scrollbar), findsAtLeastNWidgets(8));
+      expect(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is ScrollableMathLine || widget is ScrollableTextLine,
+          ),
+          matching: find.byType(Scrollbar),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.horizontal,
+        ),
+        findsAtLeastNWidgets(8),
+      );
       expect(tester.takeException(), isNull);
     },
   );

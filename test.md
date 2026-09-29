@@ -58,7 +58,7 @@ Polynomial times step rule:
 | ID | Expression | Expected result | Implemented | Notes |
 |---|---|---|---|---|
 | PU01 | `t*u(t)` | `I*pi*delta'(omega) - PV(1/omega^2)` | true | Polynomial step |
-| PU02 | `t^2*u(t)` | `-pi*delta''(omega) - 2*I*PV(1/omega^3)` | true | Polynomial step |
+| PU02 | `t^2*u(t)` | `-pi*delta''(omega) + 2*I*PV(1/omega^3)` | true | Polynomial step |
 | PU03 | `t^3*u(t)` | `-I*pi*delta'''(omega) + 6*PV(1/omega^4)` | true | Polynomial step |
 | PU04 | `2*t*u(t)` | `2*I*pi*delta'(omega) - 2*PV(1/omega^2)` | true | Constant multiplier |
 | PU05 | `(t^2+2*t+1)*u(t)` | Expanded linear combination of `t^2*u(t)`, `2*t*u(t)`, and `u(t)` | true | Polynomial expansion |
@@ -173,7 +173,7 @@ Use the convolution symbol that the backend parser actually supports. If fronten
 | C01 | `delta(t)·sin(t)` | `F{sin(t)}` | true | Identity convolution |
 | C02 | `delta(t-1)·sin(t)` | `exp(-I*omega)*F{sin(t)}` | true | Shifted impulse convolution |
 | C03 | `u(t)·exp(-t)*u(t)` | `F{u(t)} * F{exp(-t)*u(t)}` | true | Convolution theorem |
-| C04 | `cos(t)·cos(t)` | `F{cos(t)} * F{cos(t)}` | true | Convolution theorem |
+| C04 | `cos(t)·cos(t)` | `ok=false`: ordinary convolution and delta-square product not established | true | Active rejection test; not an accepted transform pair |
 | C05 | `frac(1,t^2+1)·frac(1,t^2+1)` | `(pi*exp(-abs(omega)))^2` | true | Convolution theorem |
 
 ## 9. Suggested Test Schema
@@ -224,3 +224,26 @@ When converting this data into automated tests, follow these requirements:
 7. When a new rule is added, move its related cases from future/pending to active regression tests.
 8. For expressions with mathematically equivalent output forms, prefer component-based assertions or SymPy-equivalence checks over brittle exact string matching.
 9. Test IDs in code should match the IDs in this file, so failures can be traced back to the documented transform pair.
+
+
+## 11. Dissertation delivery revision (2026-09-20)
+
+Added API regressions are in `backend/tests/test_revision.py`; existing cases remain in `tests/cases.py`. R08 now uses independently derived residues rather than requiring one particular LaTeX factorisation. C04 is actively rejected instead of claiming an undefined delta-square product.
+
+| Group | Inputs/checks | Independent basis |
+|---|---|---|
+| Affine impulses | `3*delta(2*t-6)`, `delta(-2*t+6,1)` | Delta sifting and `delta^(n)(a(t-c))=delta^(n)(t-c)/(|a|a^n)` |
+| One-sided decay | shifted/scaled right and left steps with exponential factors | Change variable from the step edge to s>=0 and integrate a decaying exponential |
+| Distributions | shifted step/sign, phased sine, t^n, t^n*u(t) | Known transform pairs and frequency differentiation |
+| Convolution | step-step, shifted/scaled steps, impulse translation, rational L1 and decaying exponentials | Compact support, causal finite time integral, or L1/smooth multiplier conditions |
+| Rejection | cosine-cosine, constant-constant, oppositely supported steps, growing one-sided exponentials | Convergence/product conditions not satisfied or not established |
+| Conditions | parameter decay/Gaussian, nonzero affine impulse scale, convolution condition propagation | Parameter domain needed by each transform pair |
+| Output boundary | forbidden forms, unresolved integral, unsafe steps/conditions | Entire unsuitable candidate rejected; original definition retained without closed-form success |
+| Input grammar | Python syntax rejected; frac, implicit multiplication, brackets, real parameters retained | Restricted AST evaluation, no Python eval/exec |
+| Method/steps | selected rule, property, convolution and direct-integral paths; final step equals result | Explicit path recording and common finalizer |
+
+The polynomial-step formula in section 2 already gives +2*I for n=2. PU02's previous negative sign was a documentation error and has been corrected; production output already had the positive sign.
+
+For distribution tests, delta terms are compared by support and derivative order using the Leibniz identity for a smooth coefficient times a delta derivative; PV kernels and their multipliers are compared separately. Ordinary simplification is only applied to regular coefficients and ordinary-function spectra, not used as a general proof of equality of distributions. Expected results are never copied from the API.
+
+A representative request is required to finish within 20 seconds in the added tests. This is an observed regression threshold, not a hard server-side computational time limit. The existing empty FUTURE_CASES parameter set generates one pytest skip; it is not an executed future-rule test.

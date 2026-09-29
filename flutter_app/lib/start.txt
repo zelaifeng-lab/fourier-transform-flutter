@@ -1,11 +1,3 @@
-pip install -r requirements.txt
-
-python -m uvicorn backend:app --reload --host 0.0.0.0 --port 8000
-
-python -m uvicorn backend:app --port 8000
-
-uvicorn backend:app --reload
-
-cd D:\AndroidStudioProjects\sample1\fourier_backend
-venv\Scripts\python.exe -m uvicorn backend:app --reload
-
+Setup instructions are provided in README.md at the package root.
+Use two terminals: start FastAPI from backend/ and run Flutter from flutter_app/.
+Render is selected by default. Set API_BASE_URL to use a local backend.

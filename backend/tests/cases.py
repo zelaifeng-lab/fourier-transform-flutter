@@ -205,7 +205,8 @@ IMPLEMENTED_CASES: tuple[FourierCase, ...] = (
     FourierCase("R05", "frac(1,t^2+4)", "rational", ("pi", "omega"), expected_result_latex=r"\frac{\pi e^{- 2 |\omega|}}{2}"),
     FourierCase("R06", "frac(t,t^2+1)", "rational", ("sign", "omega"), expected_result_latex=r"- j \pi e^{- |\omega|} \mathrm{sign}(\omega)"),
     FourierCase("R07", "frac(2*t+3,t^2+6)", "rational", ("omega",), expected_result_latex=r"\pi \left(- 2 j \mathrm{sign}(\omega) + \frac{\sqrt{6}}{2}\right) e^{- \sqrt{6} |\omega|}"),
-    FourierCase("R08", "frac(2*t,3*t^2+4*t-1)", "rational", ("omega",), expected_result_latex=r"- \frac{j \pi \left(2 \sqrt{7} + 7\right) e^{- j \omega \left(- \frac{\sqrt{7}}{3} - \frac{2}{3}\right)} \mathrm{sign}(\omega)}{21} + \frac{j \pi \left(-7 + 2 \sqrt{7}\right) e^{- j \omega \left(- \frac{2}{3} + \frac{\sqrt{7}}{3}\right)} \mathrm{sign}(\omega)}{21}"),
+    # Equivalent real-root phases are verified algebraically in test_revision.py.
+    FourierCase("R08", "frac(2*t,3*t^2+4*t-1)", "rational", ("omega", "sign", "sqrt")),
     FourierCase(
         "R15",
         "frac(t^5+t^4+t^3,(t+1)(t^2+1)(t+6)(t^2+6))",

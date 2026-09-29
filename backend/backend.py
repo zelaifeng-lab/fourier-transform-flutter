@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import contextvars
 import uuid
+from input_parser import parse_math
 import re as _regex
 from threading import RLock
 
@@ -10,11 +11,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from sympy import (
     symbols, I, exp, Integral, oo, latex, simplify, expand, diff, Derivative, re, im, sqrt, N, factorial,
-    Add, Mul, pi, sin, cos, Piecewise, Abs, sign, factor_terms
+    Add, Mul, pi, sin, cos, Piecewise, Abs, sign, factor_terms, sympify, S, integrate, tan, sinh, cosh, log, E
 , Function, together, fraction, Poly, div, apart, limit, roots, Wild, srepr)
 from sympy.functions.special.delta_functions import Heaviside, DiracDelta
 from sympy.parsing.sympy_parser import (
-    parse_expr, standard_transformations, implicit_multiplication_application
+    standard_transformations, implicit_multiplication_application
 )
 
 # ============================================================
@@ -76,7 +77,7 @@ async def _perf_middleware(request: Request, call_next):
         _PERF_CTX.reset(token)
 
 
-BUILD_ID = "v2_fixed_20260121"
+BUILD_ID = "dissertation_revision_20260920"
 APART_FULL_DEFAULT = False  # always keep real-field partial fractions (avoid RootSum)
 
 # ===== Omega-real cleanup (avoid Piecewise/arg/RootSum) =====
@@ -135,6 +136,14 @@ def _omega_real_cleanup(expr):
         return expr
     except Exception:
         return expr
+
+
+def _simplify_spectrum(expr, **kwargs):
+    """Simplify coefficients without expanding known sign distributions into cases."""
+    from sympy import Dummy
+    expr = sympify(expr)
+    protected = {atom: Dummy(real=True) for atom in expr.atoms(sign)}
+    return simplify(expr.xreplace(protected), **kwargs).xreplace({v:k for k,v in protected.items()})
 
 
 # ---------- performance logging ----------
@@ -361,7 +370,7 @@ def _convert_frac_calls(s: str) -> str:
                     cur.append(ch)
                 i += 1
             if len(args) == 2:
-                out.append(f"(({args[0]})/({args[1]}))")
+                out.append(f"(({_convert_frac_calls(args[0])})/({_convert_frac_calls(args[1])}))")
             else:
                 out.append("FRAC(" + ",".join(args) + ")")
         else:
@@ -410,6 +419,15 @@ def _pre_normalize(s: str) -> str:
 
 
 def _parse_sympy(expr_str: str):
+    if len(expr_str) > 2048:
+        raise ValueError("Expression is too long (maximum 2048 characters).")
+    depth = 0
+    for ch in expr_str:
+        depth += (ch in '(（') - (ch in ')）')
+        if depth < 0 or depth > 32:
+            raise ValueError('Invalid or excessively nested parentheses.')
+    if depth:
+        raise ValueError('Unbalanced parentheses.')
     expr_str = _pre_normalize(expr_str)
     local_dict = {
         "t": t,
@@ -427,7 +445,11 @@ def _parse_sympy(expr_str: str):
         "Rect": Rect,
         "Tri": Tri,
     }
-    expr = parse_expr(expr_str, local_dict=local_dict, transformations=TRANSFORMS, evaluate=True)
+    local_dict.update({"e": E, "i": I, "tan": tan, "sinh": sinh,
+                       "cosh": cosh, "sqrt": sqrt, "log": log, "PV": PV})
+    expr = parse_math(expr_str, local_dict, TRANSFORMS)
+    if expr.has(S.NaN, S.ComplexInfinity, oo, -oo):
+        raise ValueError("The input contains an undefined or infinite value.")
     if expr.has(sign) or expr.has(Rect) or expr.has(Tri):
         return expr
     return simplify(expr)
@@ -498,9 +520,11 @@ def _fourier_one_sided_steps(g):
 
 
 def _doit_or_keep_integral(X_def):
+    _record_method("direct_integral")
     try:
         X = X_def.doit()
-        return True, simplify(X)
+        X = _simplify_spectrum(X)
+        return not X.has(Integral), X
     except Exception:
         return False, X_def
 
@@ -783,7 +807,7 @@ def _try_trig_as_exp_distribution(f):
         if lin is not None:
             a, b = lin  # argument = a*t + b, with a,b independent of t
             if f.func == sin:
-                X = simplify(pi / I * (exp(I*b) * DiracDelta(omega - a) - exp(-I*b) * DiracDelta(omega + a)))
+                X = _simplify_spectrum(pi / I * (exp(I*b) * DiracDelta(omega - a) - exp(-I*b) * DiracDelta(omega + a)))
                 steps = _step_start_definition(f)
                 steps += [
                     r"\textbf{Step 2: Identify the sinusoidal phase}",
@@ -799,7 +823,7 @@ def _try_trig_as_exp_distribution(f):
                 steps += _step_final_result(X)
                 return ("distribution_form", True, X, steps, "", None)
             else:
-                X = simplify(pi * (exp(I*b) * DiracDelta(omega - a) + exp(-I*b) * DiracDelta(omega + a)))
+                X = _simplify_spectrum(pi * (exp(I*b) * DiracDelta(omega - a) + exp(-I*b) * DiracDelta(omega + a)))
                 steps = _step_start_definition(f)
                 steps += [
                     r"\textbf{Step 2: Identify the sinusoidal phase}",
@@ -1026,6 +1050,7 @@ def _rule_rational_apart_linearity(f):
         terms = pf.as_ordered_terms() if pf.is_Add else [pf]
 
         X_terms = []
+        conditions = []
 
 
         # Build term-wise derivations for display (textbook style)
@@ -1039,6 +1064,10 @@ def _rule_rational_apart_linearity(f):
             form_k, ok_k, Xk, steps_k, cond_k, err_k = _derive_with_properties(term)
 
 
+            if not ok_k or err_k or form_k not in {'closed_form', 'distribution_form'}:
+                return None
+            if cond_k:
+                conditions.append(cond_k)
             X_terms.append(Xk)
 
 
@@ -1113,7 +1142,7 @@ def _rule_rational_apart_linearity(f):
         steps.append(r"X(\omega)=\sum_k \mathcal{F}\{t_k\}")
         steps += _step_final_result(X)
 
-        return ("distribution_form", True, X, steps, "", None)
+        return ("distribution_form", True, X, steps, r",\quad ".join(dict.fromkeys(conditions)), None)
     except Exception:
         return None
 def _match_shifted_power(f, n):
@@ -1141,7 +1170,7 @@ def _match_shifted_power(f, n):
     return None
 def _match_heaviside_shift(expr):
     """Return a for Heaviside(t-a), or None if expr is not a unit shifted step."""
-    if getattr(expr, "func", None) != Heaviside or len(expr.args) < 1:
+    if not _is_heaviside(expr):
         return None
     lin = _as_linear_in_t(expr.args[0])
     if lin is None:
@@ -1170,7 +1199,7 @@ def _rule_shifted_heaviside_distribution(f):
     if a_shift is None:
         return None
 
-    base = pi*DiracDelta(omega) - I*(1/omega)
+    base = pi*DiracDelta(omega) - I*PV(1/omega)
     X = base if simplify(a_shift) == 0 else exp(-I*omega*a_shift) * base
     steps = _step_start_definition(f)
     steps += [
@@ -1286,7 +1315,7 @@ def _rule_polynomial_finite_step_window(f):
         antiderivative_parts.append(coeff * _anti_monomial(n, t))
         X_parts.append(coeff * (_anti_monomial(n, b) - _anti_monomial(n, a)))
     anti = simplify(Add(*antiderivative_parts, evaluate=False))
-    X = simplify(Add(*X_parts, evaluate=False))
+    X = _simplify_spectrum(Add(*X_parts, evaluate=False))
     if isinstance(X, Piecewise):
         return None
 
@@ -1539,7 +1568,7 @@ def _rule_pv_second_order(f):
         if simplify(a) == 0:
             return None
         shift = simplify(b / a)
-        X = simplify(-(pi / (a**2)) * Abs(omega) * exp(I*omega*shift))
+        X = _simplify_spectrum(-(pi / (a**2)) * Abs(omega) * exp(I*omega*shift))
         X = _omega_real_cleanup(X)
         steps = _step_start_definition(f)
         steps += [
@@ -1577,7 +1606,7 @@ def _rule_sinc_family(f):
             pair_latex = r"\mathcal{F}\left\{\frac{\sin(a t)}{t}\right\}=\pi\operatorname{rect}\left(\frac{\omega}{2a}\right),\quad a>0"
         else:
             return None
-        X = simplify(scale * Rect(omega / (2*alpha)))
+        X = _simplify_spectrum(scale * Rect(omega / (2*alpha)))
         steps = _step_start_definition(f)
         steps += [
             r"\textbf{Step 2: Identify the sinc-type signal}",
@@ -1609,7 +1638,7 @@ def _rule_gaussian_family(f):
         alpha = simplify(-c2)
         if simplify(alpha) == 0:
             return None
-        X = simplify(sqrt(pi/alpha) * exp(-omega**2/(4*alpha)))
+        X = _simplify_spectrum(sqrt(pi/alpha) * exp(-omega**2/(4*alpha)))
         steps = _step_start_definition(f)
         steps += [
             r"\textbf{Step 2: Identify the Gaussian form}",
@@ -1635,7 +1664,7 @@ def _rule_two_sided_exponential_parameter(f):
         alpha = simplify(-arg / Abs(t))
         if alpha.has(t) or simplify(alpha) == 0:
             return None
-        X = simplify(2*alpha/(alpha**2 + omega**2))
+        X = _simplify_spectrum(2*alpha/(alpha**2 + omega**2))
         steps = _step_start_definition(f)
         steps += [
             r"\textbf{Step 2: Identify the two-sided exponential form}",
@@ -1696,7 +1725,7 @@ def _rule_generic_time_shift(f):
                 continue
             if G.has(DiracDelta):
                 continue
-            X = _omega_real_cleanup(Mul(exp(-I*omega*c), G, evaluate=False))
+            X = _omega_real_cleanup(exp(-I*omega*c) * G)
             steps = _step_start_definition(f)
             steps += [
                 r"\textbf{Step 2: Identify a time shift}",
@@ -1819,6 +1848,16 @@ def _rule_time_multiply_closed_form(f):
 
 # ---------- main derivation ----------
 
+def _attempt_rule(rule, f):
+    paths = _METHOD_PATH.get()
+    before = set(paths) if paths is not None else None
+    result = rule(f)
+    if result is None and paths is not None:
+        paths.clear()
+        paths.update(before)
+    return result
+
+
 def _derive_with_properties(f):
     """
     Returns: (form, ok, X_expr, steps_latex, conditions_latex, error_or_None)
@@ -1827,77 +1866,99 @@ def _derive_with_properties(f):
 
     # 0) Trig-first policy (user request)
 
-    sign_res = _rule_sign_distribution(f)
+    sign_res = _attempt_rule(_rule_sign_distribution, f)
     if sign_res is not None:
+        _record_method("known_pair")
         return sign_res
 
-    rect_res = _rule_rect_distribution(f)
+    rect_res = _attempt_rule(_rule_rect_distribution, f)
     if rect_res is not None:
+        _record_method("known_pair")
         return rect_res
 
-    tri_res = _rule_tri_distribution(f)
+    tri_res = _attempt_rule(_rule_tri_distribution, f)
     if tri_res is not None:
+        _record_method("known_pair")
         return tri_res
 
-    pv2_res = _rule_pv_second_order(f)
+    pv2_res = _attempt_rule(_rule_pv_second_order, f)
     if pv2_res is not None:
+        _record_method("known_pair")
         return pv2_res
 
-    sinc_res = _rule_sinc_family(f)
+    sinc_res = _attempt_rule(_rule_sinc_family, f)
     if sinc_res is not None:
+        _record_method("known_pair")
         return sinc_res
 
-    gaussian_res = _rule_gaussian_family(f)
+    gaussian_res = _attempt_rule(_rule_gaussian_family, f)
     if gaussian_res is not None:
+        _record_method("known_pair")
         return gaussian_res
 
-    two_sided_exp_res = _rule_two_sided_exponential_parameter(f)
+    two_sided_exp_res = _attempt_rule(_rule_two_sided_exponential_parameter, f)
     if two_sided_exp_res is not None:
+        _record_method("known_pair")
         return two_sided_exp_res
 
-    finite_window_res = _rule_finite_step_window(f)
+    finite_window_res = _attempt_rule(_rule_finite_step_window, f)
     if finite_window_res is not None:
+        _record_method("known_pair")
         return finite_window_res
 
-    poly_window_res = _rule_polynomial_finite_step_window(f)
+    poly_window_res = _attempt_rule(_rule_polynomial_finite_step_window, f)
     if poly_window_res is not None:
+        _record_method("known_pair")
         return poly_window_res
 
-    shifted_step_res = _rule_shifted_heaviside_distribution(f)
+    shifted_step_res = _attempt_rule(_rule_shifted_heaviside_distribution, f)
     if shifted_step_res is not None:
+        _record_method("known_pair")
         return shifted_step_res
 
-    modulated_step_res = _rule_modulated_step(f)
+    affine_step = _attempt_rule(_rule_affine_step, f)
+    if affine_step is not None:
+        return affine_step
+
+    modulated_step_res = _attempt_rule(_rule_modulated_step, f)
     if modulated_step_res is not None:
+        _record_method("known_pair")
         return modulated_step_res
 
-    abs_exp_res = _rule_abs_exponential(f)
+    abs_exp_res = _attempt_rule(_rule_abs_exponential, f)
     if abs_exp_res is not None:
+        _record_method("known_pair")
         return abs_exp_res
 
-    shifted_poly_step_res = _rule_shifted_poly_times_step_distribution(f)
+    shifted_poly_step_res = _attempt_rule(_rule_shifted_poly_times_step_distribution, f)
     if shifted_poly_step_res is not None:
+        _record_method("known_pair")
         return shifted_poly_step_res
 
-    poly_step_res = _rule_poly_times_step_distribution(f)
+    poly_step_res = _attempt_rule(_rule_poly_times_step_distribution, f)
 
-    pv_res = _rule_pv_reciprocal(f)
+    pv_res = _attempt_rule(_rule_pv_reciprocal, f)
     if pv_res is not None:
+        _record_method("known_pair")
         return pv_res
 
-    poly_res = _rule_poly_distribution(f)
+    poly_res = _attempt_rule(_rule_poly_distribution, f)
     if poly_res is not None:
+        _record_method("known_pair")
         return poly_res
 
     if poly_step_res is not None:
+        _record_method("known_pair")
         return poly_step_res
 
-    trig_step_res = _rule_trig_times_step_distribution(f)
+    trig_step_res = _attempt_rule(_rule_trig_times_step_distribution, f)
     if trig_step_res is not None:
+        _record_method("known_pair")
         return trig_step_res
 
-    trig_res = _try_trig_as_exp_distribution(f)
+    trig_res = _attempt_rule(_try_trig_as_exp_distribution, f)
     if trig_res is not None:
+        _record_method("known_pair")
         return trig_res
 
 
@@ -1915,7 +1976,7 @@ def _derive_with_properties(f):
                     c_pos = bool(getattr(c, "is_positive", None))
                     if c_pos or (c.is_Number and float(c) > 0) or (c.is_Pow and c.exp == 2):
                         alpha = simplify(sqrt(c))
-                        X = simplify(pi/alpha * exp(-alpha*Abs(omega)))
+                        X = _simplify_spectrum(pi/alpha * exp(-alpha*Abs(omega)))
                         X = _omega_real_cleanup(X)
                         steps = _step_start_definition(f)
                         steps += [
@@ -1927,20 +1988,23 @@ def _derive_with_properties(f):
                             r"\mathcal{F}\left\{\frac{1}{t^2+\alpha^2}\right\}=\frac{\pi}{\alpha}e^{-\alpha|\omega|},\quad \alpha>0",
                         ]
                         steps += _step_final_result(X)
-                        return "distribution_form", True, X, steps, "", None
+                        return "distribution_form", True, X, steps, (latex(c)+">0" if c.is_positive is not True else ""), None
     except Exception:
         pass
 
-    quadlin_res = _rule_linear_over_t2_plus_c(f)
+    quadlin_res = _attempt_rule(_rule_linear_over_t2_plus_c, f)
     if quadlin_res is not None:
+        _record_method("known_pair")
         return quadlin_res
 
-    rat_res = _rule_rational_apart_linearity(f)
+    rat_res = _attempt_rule(_rule_rational_apart_linearity, f)
     if rat_res is not None:
+        _record_method("property_rule")
         return rat_res
 
-    distributed_res = _rule_distributed_linearity(f)
+    distributed_res = _attempt_rule(_rule_distributed_linearity, f)
     if distributed_res is not None:
+        _record_method("property_rule")
         return distributed_res
 
 
@@ -1948,7 +2012,7 @@ def _derive_with_properties(f):
     # 0.5) Constant (distribution)
     # x(t)=C  -> X(omega)=2*pi*C*delta(omega)
     if f.free_symbols.isdisjoint({t}):
-        X = simplify(2*pi*f*DiracDelta(omega))
+        X = _simplify_spectrum(2*pi*f*DiracDelta(omega))
         steps = _step_start_definition(f)
         steps += [
             r"\textbf{Step 2: Use the constant transform pair}",
@@ -1958,97 +2022,13 @@ def _derive_with_properties(f):
         steps += _step_final_result(X)
         return "distribution_form", True, X, steps, "", None
 
-    # 0.6) DiracDelta(t-a) shift
-    if f.func == DiracDelta and len(f.args)==1:
-        arg = f.args[0]
-        lin = _as_linear_in_t(arg)
-        if lin is not None:
-            a, b = lin  # arg = a*t + b
-            # Only handle a = 1, -1 cleanly for now
-            if a == 1:
-                t0 = -b
-                X = simplify(exp(-I*omega*t0))
-                steps = _step_start_definition(f)
-                steps += [
-                    r"\textbf{Step 2: Identify the impulse location}",
-                    r"\delta(t-t_0),\quad t_0=" + latex(t0),
-                    r"\textbf{Step 3: Use the sifting property of the delta function}",
-                    r"X(\omega)=\int_{-\infty}^{\infty}\delta(t-t_0)e^{-j\omega t}\,dt=e^{-j\omega t_0}",
-                ]
-                steps += _step_final_result(X)
-                return "distribution_form", True, X, steps, "", None
-            if a == -1:
-                # delta(-t + b) = delta(t-b)
-                t0 = b
-                X = simplify(exp(-I*omega*t0))
-                steps = _step_start_definition(f)
-                steps += [
-                    r"\textbf{Step 2: Use delta symmetry to identify the impulse location}",
-                    r"\delta(-t+t_0)=\delta(t-t_0),\quad t_0=" + latex(t0),
-                    r"\textbf{Step 3: Apply the impulse transform pair}",
-                    r"\mathcal{F}\{\delta(t-t_0)\}=e^{-j\omega t_0}",
-                ]
-                steps += _step_final_result(X)
-                return "distribution_form", True, X, steps, "", None
+    impulse = _attempt_rule(_rule_affine_delta, f)
+    if impulse is not None:
+        return impulse
 
-    # 0.7) Heaviside(t) and Heaviside(t-a) (distribution)
-    if f == Heaviside(t) or (f.func==Heaviside and len(f.args)==1 and _as_linear_in_t(f.args[0]) is not None):
-        if f == Heaviside(t):
-            a_shift = 0
-        else:
-            lin = _as_linear_in_t(f.args[0])
-            a1, b1 = lin  # a1*t + b1
-            if a1 != 1:
-                a_shift = None
-            else:
-                a_shift = -b1
-        if a_shift is not None:
-            base = simplify(pi*DiracDelta(omega) - I*(1/omega))
-            # Use PV via sign rule? We'll keep PV as 1/omega with distribution note.
-            # Standard form: pi*delta(omega) - j*PV(1/omega).
-            X = simplify(pi*DiracDelta(omega) - I*sign(omega)*0)  # placeholder to keep simplify stable
-            X = pi*DiracDelta(omega) - I* (1/omega)
-            steps = [
-                r"x(t)=u(t)=\mathrm{Heaviside}(t)",
-                r"\int_0^{\infty}e^{-j\omega t}dt=\lim_{\varepsilon\to0^+}\frac{1}{\varepsilon+j\omega}=\pi\delta(\omega)-j\,\mathrm{PV}\frac{1}{\omega}",
-            ]
-            if a_shift != 0:
-                X = simplify(exp(-I*omega*a_shift) * (pi*DiracDelta(omega) - I*(1/omega)))
-                steps.append(r"u(t-a)\Rightarrow e^{-j\omega a}U(\omega)")
-            else:
-                X = pi*DiracDelta(omega) - I*(1/omega)
-            steps.append(r"X(\omega)=" + latex(X))
-            return "distribution_form", True, X, steps, "", None
-
-    # 0.8) exp(a*t)*Heaviside(t) (Laplace-type)
-    if isinstance(f, Mul) and any((getattr(arg,'func',None)==Heaviside) for arg in f.args):
-        h = next(arg for arg in f.args if getattr(arg,'func',None)==Heaviside)
-        g = simplify(f / h)
-        if g.func == exp and len(g.args)==1:
-            lin = _as_linear_in_t(g.args[0])
-            if lin is not None:
-                acoef, b = lin  # exponent = acoef*t + b
-                # x(t)=e^{a t + b}u(t) -> e^{b} /(j*omega - a)
-                X = simplify(exp(b) / (I*omega - acoef))
-                condition_latex = ""
-                if acoef.free_symbols:
-                    alpha_pos = simplify(-acoef)
-                    if not alpha_pos.has(t) and str(alpha_pos).isidentifier():
-                        condition_latex = latex(alpha_pos) + r">0"
-                    else:
-                        condition_latex = r"\Re(" + latex(acoef) + r")<0"
-                steps = _step_start_definition(f)
-                steps += [
-                    r"\textbf{Step 2: Use the unit step to set the integration range}",
-                    r"\text{Write }x(t)=e^{a t+b}u(t),\quad a=" + latex(acoef) + r",\quad b=" + latex(b),
-                    r"X(\omega)=\int_{0}^{\infty}e^{a t+b}e^{-j\omega t}\,dt",
-                    r"\textbf{Step 3: Combine exponential terms}",
-                    r"X(\omega)=e^b\int_{0}^{\infty}e^{(a-j\omega)t}\,dt,\quad \Re(a)<0",
-                    r"\textbf{Step 4: Evaluate the convergent one-sided exponential integral}",
-                    r"X(\omega)=\frac{e^b}{j\omega-a}",
-                ]
-                steps += _step_final_result(X)
-                return "closed_form", True, X, steps, condition_latex, None
+    decay = _attempt_rule(_rule_one_sided_decay, f)
+    if decay is not None:
+        return decay
 
     # 0.9) exp(-a*Abs(t)) (common integrable)
     if f.func == exp and len(f.args)==1 and f.args[0].has(Abs(t)):
@@ -2058,7 +2038,7 @@ def _derive_with_properties(f):
         m = arg.match(-a_sym*Abs(t))
         if m and a_sym in m:
             a_val = m[a_sym]
-            X = simplify(2*a_val/(a_val**2 + omega**2))
+            X = _simplify_spectrum(2*a_val/(a_val**2 + omega**2))
             steps = [
                 r"x(t)=e^{-a|t|}\ (a>0)",
                 r"X(\omega)=\int_{-\infty}^{\infty}e^{-a|t|}e^{-j\omega t}dt=\frac{2a}{a^2+\omega^2}",
@@ -2073,7 +2053,7 @@ def _derive_with_properties(f):
             lin = _as_linear_in_t(inside)
             if lin is not None:
                 w0, phi = lin
-                X = simplify(2*pi*exp(I*phi)*DiracDelta(omega - w0))
+                X = _simplify_spectrum(2*pi*exp(I*phi)*DiracDelta(omega - w0))
                 steps = _step_start_definition(f)
                 steps += [
                     r"\textbf{Step 2: Separate the constant phase and the pure tone}",
@@ -2111,7 +2091,7 @@ def _derive_with_properties(f):
             other.append(a)
         if exp_factor is not None and tpow is not None:
             coeff = simplify(Mul(*other)) if other else 1
-            X = simplify(coeff * 2*pi * (I**tpow) * diff(DiracDelta(omega-exp_factor), omega, tpow))
+            X = _simplify_spectrum(coeff * 2*pi * (I**tpow) * diff(DiracDelta(omega-exp_factor), omega, tpow))
             steps = [
                 r"x(t)=t^n e^{j\omega_0 t}",
                 r"\mathcal{F}\{e^{j\omega_0 t}\}=2\pi\delta(\omega-\omega_0)",
@@ -2121,16 +2101,19 @@ def _derive_with_properties(f):
                 ]
             return "distribution_form", True, X, steps, "", None
 
-    generic_mod_res = _rule_generic_modulation(f)
+    generic_mod_res = _attempt_rule(_rule_generic_modulation, f)
     if generic_mod_res is not None:
+        _record_method("property_rule")
         return generic_mod_res
 
-    generic_shift_res = _rule_generic_time_shift(f)
+    generic_shift_res = _attempt_rule(_rule_generic_time_shift, f)
     if generic_shift_res is not None:
+        _record_method("property_rule")
         return generic_shift_res
 
-    time_multiply_res = _rule_time_multiply_closed_form(f)
+    time_multiply_res = _attempt_rule(_rule_time_multiply_closed_form, f)
     if time_multiply_res is not None:
+        _record_method("property_rule")
         return time_multiply_res
 
 
@@ -2163,7 +2146,7 @@ def _derive_with_properties(f):
             f0 = Mul(*t_args) if t_args else 1
     a1 = _match_shifted_power(f0, 1)
     if a1 is not None:
-        X = simplify(c0 * (-I*pi*sign(omega) * exp(I*omega*a1)))
+        X = _simplify_spectrum(c0 * (-I*pi*sign(omega) * exp(I*omega*a1)))
         steps = [
             r"\text{(Distribution)}\;\mathcal{F}\{\mathrm{PV}\tfrac{1}{t}\}=-i\pi\,\mathrm{sign}(\omega)",
             r"\text{Time shift: }\mathcal{F}\{g(t-t_0)\}=e^{-i\omega t_0}G(\omega)",
@@ -2180,7 +2163,7 @@ def _derive_with_properties(f):
 
     a2 = _match_shifted_power(f0, 2)
     if a2 is not None:
-        X = simplify(c0 * (-pi*omega*sign(omega) * exp(I*omega*a2)))
+        X = _simplify_spectrum(c0 * (-pi*omega*sign(omega) * exp(I*omega*a2)))
         steps = [
             r"\frac{d}{dt}\left(\frac{1}{t+a}\right)=-\frac{1}{(t+a)^2}",
             r"\mathcal{F}\left\{\frac{d}{dt}g(t)\right\}=j\omega\,G(\omega)",
@@ -2204,6 +2187,7 @@ def _derive_with_properties(f):
 
     # 4) Linearity / homogeneity
     if isinstance(f, Add):
+        _record_method("linearity")
         terms = list(f.args)
 
         # --- Special teaching-step formatting: finite window u(t-a) - u(t-b) ---
@@ -2259,7 +2243,7 @@ def _derive_with_properties(f):
                 conds.append(ck)
             term_X.append((term, Xk))
             X_sum += Xk
-        X_sum = simplify(X_sum)
+        X_sum = _simplify_spectrum(X_sum)
 
         if win is not None:
             a, b = win
@@ -2294,8 +2278,9 @@ def _derive_with_properties(f):
     if isinstance(f, Mul):
         coeff, rest = f.as_independent(t, as_Add=False)
         if coeff != 1:
+            _record_method("linearity")
             formG, okG, G, G_steps, condG, errG = _derive_with_properties(rest)
-            X = simplify(coeff * G, doit=False)
+            X = _simplify_spectrum(coeff * G, doit=False)
             steps = [
                 r"\text{Use homogeneity: }\mathcal{F}\{C\,g(t)\}=C\,G(\omega)",
                 r"x(t)=" + latex(f),
@@ -2316,6 +2301,269 @@ def _derive_with_properties(f):
 
     steps.append(r"\text{Closed-form not found; returned the engineering-definition integral.}")
     return "integral_form", True, X, steps, "", "Closed-form not found; returned integral form."
+
+
+_METHOD_PATH = contextvars.ContextVar('method_path', default=None)
+
+
+def _record_method(method):
+    paths = _METHOD_PATH.get()
+    if paths is not None:
+        paths.add(method)
+
+
+def _is_heaviside(expr):
+    """Recognise a single Heaviside, including SymPy's explicit value at zero."""
+    return getattr(expr, 'func', None) == Heaviside and len(expr.args) in (1, 2)
+
+
+def _extract_delta_shift(f):
+    """Return the location of a single affine impulse; amplitudes remain separate."""
+    pair = _extract_single_function_factor(f, DiracDelta)
+    if pair is None:
+        return None
+    _, core = pair
+    lin = _as_linear_in_t(core.args[0])
+    if lin is None or lin[0].is_zero is True:
+        return None
+    return simplify(-lin[1] / lin[0])
+
+
+def _affine_real_conditions(a, b):
+    if a.is_real is False or b.is_real is False or a.is_zero is True:
+        return None
+    conditions = []
+    if a.is_real is not True: conditions.append(latex(a) + r'\in\mathbb{R}')
+    if b.is_real is not True: conditions.append(latex(b) + r'\in\mathbb{R}')
+    if a.is_nonzero is not True: conditions.append(latex(a) + r'\ne0')
+    return r',\quad '.join(conditions)
+
+
+def _rule_affine_delta(f):
+    pair = _extract_single_function_factor(f, DiracDelta)
+    center = _extract_delta_shift(f)
+    if pair is None or center is None:
+        return None
+    coeff, core = pair
+    a, b = _as_linear_in_t(core.args[0])
+    conditions = _affine_real_conditions(a, b)
+    if conditions is None: return None
+    n = core.args[1] if len(core.args) > 1 else S.Zero
+    if n.is_Integer is not True or n < 0: return None
+    X = _simplify_spectrum(coeff * (I*omega)**n * exp(-I*omega*center) / (Abs(a)*a**n))
+    steps = [
+        r'\textbf{Step 1: Identify the impulse location}',
+        r't_0=' + latex(center) + r',\quad a=' + latex(a) + r',\quad C=' + latex(coeff),
+        r'\textbf{Step 2: Use the sifting property of the delta function}',
+        r'\mathcal{F}\{\delta(t-t_0)\}=e^{-j\omega t_0}',
+        r'\delta^{(n)}(a(t-t_0))=\frac{\delta^{(n)}(t-t_0)}{|a|a^n}',
+        r'\mathcal{F}\{\delta^{(n)}(t-t_0)\}=(j\omega)^n e^{-j\omega t_0},\quad n=' + latex(n),
+    ] + _step_final_result(X)
+    _record_method('known_pair')
+    return 'distribution_form', True, X, steps, conditions, None
+
+
+def _decay_parts(f):
+    factors = list(f.atoms(Heaviside))
+    if len(factors) != 1: return None
+    h = factors[0]
+    if not _is_heaviside(h): return None
+    lin = _as_linear_in_t(h.args[0])
+    if lin is None: return None
+    a, b = lin
+    # Unknown step orientation is not silently assumed positive.
+    if a.is_positive is True: direction = S.One
+    elif a.is_negative is True: direction = -S.One
+    else: return None
+    center = simplify(-b/a)
+    if center.is_real is False: return None
+    rest = simplify(f/h)
+    coeff, core = rest.as_independent(t, as_Add=False)
+    if core.func != exp: return None
+    exponent = _as_linear_in_t(core.args[0])
+    if exponent is None: return None
+    slope, offset = exponent
+    return coeff, slope, offset, center, direction
+
+
+def _has_exp_decay_and_step(f):
+    """Recognise a one-sided affine exponential with a possible decay condition."""
+    parts = _decay_parts(f)
+    if parts is None: return False
+    rate = -parts[1]*parts[4]
+    return re(rate).is_positive is not False
+
+
+def _extract_decay_rate(f):
+    """Decay rate in the outward coordinate s>=0 at the step edge."""
+    parts = _decay_parts(f)
+    return simplify(-parts[1]*parts[4]) if parts else None
+
+
+def _rule_one_sided_decay(f):
+    parts = _decay_parts(f)
+    if parts is None: return None
+    coeff, slope, offset, center, direction = parts
+    if not _has_exp_decay_and_step(f):
+        if re(-slope*direction).is_negative is True:
+            return 'divergent', False, Integral(f*exp(-I*omega*t), (t, -oo, oo)), [], '', 'The signal grows on its unbounded support; the Fourier integral does not converge.'
+        return None
+    rate = _extract_decay_rate(f)
+    condition = '' if re(rate).is_positive is True else latex(re(rate)) + '>0'
+    X = _simplify_spectrum(coeff*exp(slope*center+offset-I*omega*center)/(rate+direction*I*omega))
+    steps = _step_start_definition(f) + [
+        r'\textbf{Step 2: Use the unit step to set the integration range}',
+        r'a=' + latex(slope) + r',\quad b=' + latex(offset),
+        r't=c+d s,\quad s\ge0,\quad c=' + latex(center) + r',\quad d=' + latex(direction),
+        r'\textbf{Step 3: Combine exponential terms}',
+        r'X(\omega)=C e^{ac+b-j\omega c}\int_0^\infty e^{-(r+jd\omega)s}\,ds,\quad r=-ad,\quad\Re(r)>0',
+        r'\textbf{Step 4: Evaluate the convergent one-sided exponential integral}',
+        r'X(\omega)=\frac{C e^{ac+b-j\omega c}}{r+jd\omega}',
+    ] + _step_final_result(X)
+    _record_method('known_pair')
+    return 'closed_form', True, X, steps, condition, None
+
+
+def _bad_display(text):
+    # Match forbidden function names, not ordinary words such as "argument".
+    return bool(_regex.search(r'Piecewise|RootSum|polar_lift|meijerg|_rule_|matcher|debug|srepr|\\begin\{cases\}|(?<![A-Za-z])arg(?![A-Za-z])', text or ''))
+
+
+def _bad_expression(X):
+    return any(getattr(node.func, '__name__', '') in
+               {'Piecewise', 'RootSum', 'arg', 'polar_lift', 'meijerg'}
+               for node in _iter_subexpressions(sympify(X)))
+
+
+def _finalize_response(f, result, method, *, input_latex=None, definition=None):
+    """Single output boundary for normal, convolution and integration paths.
+
+    Reject whole unsuitable candidates, retaining the original defining integral.
+    Never strip mathematical clauses to turn a rejected result into a success.
+    """
+    form, ok, X, steps, conditions, error = result
+    X = sympify(X)
+    definition = definition if definition is not None else Integral(f*exp(-I*omega*t), (t, -oo, oo))
+    unsafe = _bad_expression(X) or any(_bad_display(str(x)) for x in [*steps, conditions])
+    nonfinite = not X.has(Integral) and X.has(S.NaN, S.ComplexInfinity, oo, -oo)
+    accepted = ok and not error and form in {'closed_form', 'distribution_form'} and not X.has(Integral) and not unsafe and not nonfinite
+    if accepted:
+        result_text = _format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(X))
+        teaching = _teaching_steps(f, X, steps)
+        if any(_bad_display(x) for x in [result_text, *teaching, conditions or '']):
+            accepted = False
+    if not accepted:
+        form = 'divergent' if form == 'divergent' or nonfinite else 'integral_form'
+        X = definition
+        result_text = _format_result_display_latex(latex(X))
+        teaching = [r'\textbf{Fourier integral representation}',
+                    r'X(\omega)=' + result_text,
+                    r'\text{An accepted closed form has not been established.}']
+        error = error or 'Closed form not established under the supported assumptions.'
+        if _bad_display(conditions or ''): conditions = ''
+        if _bad_display(result_text):
+            # Do not expose a forbidden input function even inside an integral.
+            result_text = ''
+            teaching = [r'\text{This expression cannot be displayed in the supported notation.}']
+    return FourierResponse(build_id=BUILD_ID, ok=accepted,
+        input_latex=input_latex if input_latex is not None else _format_step_display_latex(latex(f)),
+        result_latex=result_text, steps_latex=teaching, conditions_latex=conditions or '',
+        error=None if accepted else error, form=form, method=method)
+
+
+def _causal_polynomial(f):
+    hs = list(f.atoms(Heaviside))
+    if len(hs) != 1: return None
+    lin = _as_linear_in_t(hs[0].args[0])
+    if lin is None or lin[0].is_positive is not True: return None
+    c = simplify(-lin[1]/lin[0])
+    p = simplify((f/hs[0]).subs(t, t+c))
+    if not p.is_polynomial(t): return None
+    return c, p
+
+
+def _convolution_class(f):
+    """Conservative sufficient certificates, not a universal convergence oracle."""
+    if f == 0: return 'compact'
+    if _extract_single_function_factor(f, Rect) or _extract_single_function_factor(f, Tri):
+        return 'compact'
+    if _match_finite_step_window_add(f) is not None:
+        return 'compact'
+    if _rule_gaussian_family(f) is not None: return 'smooth_spectrum'
+    if _has_exp_decay_and_step(f): return 'smooth_spectrum'
+    if _rule_two_sided_exponential_parameter(f) is not None: return 'smooth_spectrum'
+    if _rule_abs_exponential(f) is not None: return 'smooth_spectrum'
+    # The shipped rational L1 pair and polynomially decaying proper rationals
+    # with a denominator provably free of real zeros.
+    num, den = fraction(together(f))
+    if f.is_rational_function(t):
+        try:
+            if Poly(den,t).degree()-Poly(num,t).degree() >= 2:
+                from sympy import solveset
+                if solveset(den, t, domain=S.Reals) == S.EmptySet: return 'l1'
+        except Exception:
+            pass
+    return None
+
+
+def _convolve(f, g):
+    tau = symbols('tau', real=True)
+    definition = Integral(Integral(f.subs(t,tau)*g.subs(t,t-tau), (tau,-oo,oo))*exp(-I*omega*t), (t,-oo,oo))
+    display = _format_step_display_latex(latex(f)) + r'\star ' + _format_step_display_latex(latex(g))
+    Fresult, Gresult = _derive_with_properties(f), _derive_with_properties(g)
+    F, G = Fresult[2], Gresult[2]
+    conditions = r',\quad '.join(dict.fromkeys(c for c in [Fresult[4], Gresult[4]] if c))
+    steps = [r'x(t)=(f\star g)(t)=\int_{-\infty}^{\infty}f(\tau)g(t-\tau)\,d\tau']
+    # Compactly supported delta: convolution is a translated derivative, including
+    # coefficient, scale and derivative order. No product of distributions needed.
+    for impulse, other in [(f,g),(g,f)]:
+        pair = _extract_single_function_factor(impulse, DiracDelta)
+        c = _extract_delta_shift(impulse)
+        if pair is not None and c is not None:
+            coeff, d = pair
+            a, b = _as_linear_in_t(d.args[0])
+            cond = _affine_real_conditions(a,b)
+            if cond is None: continue
+            n = d.args[1] if len(d.args)>1 else 0
+            shifted = coeff*diff(other,t,n).subs(t,t-c)/(Abs(a)*a**n)
+            result = _derive_with_properties(shifted)
+            steps += [r'\text{A compactly supported impulse gives a translated derivative.}',
+                      r'X(\omega)=F(\omega)\,G(\omega)',
+                      r'F(\omega)='+latex(F), r'G(\omega)='+latex(G)] + result[3]
+            result = (*result[:3], steps, r',\quad '.join(x for x in [conditions,cond,result[4]] if x), result[5])
+            return _finalize_response(shifted, result, 'convolution_rule', input_latex=display, definition=definition)
+    # Causal polynomial distributions have a well-defined convolution on the half-line.
+    # Compute there before transforming; delta^2 and PV^2 are never constructed.
+    cp, cq = _causal_polynomial(f), _causal_polynomial(g)
+    if cp is not None and cq is not None:
+        center = cp[0]+cq[0]
+        h = integrate(cp[1].subs(t,tau)*cq[1].subs(t,t-tau),(tau,0,t))
+        h = expand(h).subs(t,t-center)*Heaviside(t-center)
+        result = _derive_with_properties(h)
+        steps += [r'\text{Both supports are bounded below; evaluate the finite time-domain convolution.}',
+                  r'x(t)='+latex(h),
+                  r'F(\omega)='+latex(F), r'G(\omega)='+latex(G),
+                  r'\text{The formal identity }X(\omega)=F(\omega)\,G(\omega)\text{ requires the common causal limiting prescription.}',
+                  r'\text{Ordinary products of singular distributions are not used.}'] + result[3]
+        return _finalize_response(h, (*result[:3],steps,conditions,result[5]), 'convolution_rule', input_latex=display, definition=definition)
+    valid = all(r[1] and not r[5] and r[0] in {'closed_form','distribution_form'}
+                and not sympify(r[2]).has(Integral) and not _bad_expression(r[2]) for r in [Fresult,Gresult])
+    cf, cg = _convolution_class(f), _convolution_class(g)
+    df = sympify(F).has(DiracDelta,PV)
+    dg = sympify(G).has(DiracDelta,PV)
+    certified = (cf == 'compact' or cg == 'compact' or
+                 (cf in {'l1','smooth_spectrum'} and cg in {'l1','smooth_spectrum'}) or
+                 (df and cg == 'smooth_spectrum') or (dg and cf == 'smooth_spectrum'))
+    if valid and certified and not (df and dg):
+        X = _simplify_spectrum(F*G)
+        steps += [r'\text{Use the convolution theorem under the stated integrability or smooth-multiplier conditions.}',
+                  r'X(\omega)=F(\omega)\,G(\omega)',
+                  r'F(\omega)='+latex(F),r'G(\omega)='+latex(G)] + _step_final_result(X)
+        return _finalize_response(S.Zero, ('distribution_form' if df or dg else 'closed_form',True,X,steps,conditions,None),
+                                  'convolution_rule',input_latex=display,definition=definition)
+    result = ('integral_form',False,definition,[],conditions,
+              'Convolution convergence or the product of distributions has not been established for these operands.')
+    return _finalize_response(S.Zero,result,'convolution_rule',input_latex=display,definition=definition)
 
 
 # ---------- API models ----------
@@ -2348,10 +2596,6 @@ def _teaching_steps(f, X, steps):
         s = _format_step_display_latex(s)
         if s.startswith(r"X(\omega)="):
             s = r"X(\omega)=" + _format_result_display_latex(s[len(r"X(\omega)="):])
-        if "Method:" in s or "_rule_" in s or "matcher" in s or "debug" in s or "srepr" in s:
-            continue
-        if r"\begin{cases}" in s or "Piecewise" in s or "RootSum" in s or "polar_lift" in s or "meijerg" in s:
-            continue
         cleaned.append(s)
 
     cleaned = _drop_nested_definition_blocks(cleaned)
@@ -2359,142 +2603,57 @@ def _teaching_steps(f, X, steps):
         cleaned = _strip_leading_definition_block(cleaned)
     cleaned = _renumber_teaching_steps(cleaned)
 
-    if not cleaned or "Final Result" not in "\n".join(cleaned):
-        result_text = _format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(_omega_real_cleanup(X)))
-        cleaned += [
-            r"\textbf{Final Result}",
-            r"X(\omega)=" + result_text,
-        ]
+    result_text = _format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(X))
+    final_heading = r"\textbf{Final Result}"
+    if len(cleaned) >= 2 and cleaned[-2] == final_heading:
+        cleaned[-1] = r"X(\omega)=" + result_text
+        prefix_end = len(cleaned)-2
+    else:
+        prefix_end = len(cleaned)
+        cleaned += [final_heading, r"X(\omega)=" + result_text]
+    for index in range(prefix_end):
+        if cleaned[index] == final_heading:
+            cleaned[index] = r"\textbf{Intermediate result}"
     return cleaned
 
 
-@app.post("/fourier", response_model=FourierResponse)
+@app.post('/fourier', response_model=FourierResponse)
 def fourier(req: FourierRequest):
-    raw = (req.expression or "").strip()
+    raw = (req.expression or '').strip()
     if not raw:
-        return FourierResponse(
-            build_id=BUILD_ID,
-            ok=False,
-            input_latex="",
-            result_latex="",
-            steps_latex=[r"\text{Empty input.}"],
-            error="Empty input",
-            form="error",
-            conditions_latex="",
-            method="unknown",
-
-        )
-
-    # Convolution uses the normalized U+2022 separator internally.
-    conv = _split_convolution_top_level(raw)
-    if conv is not None:
-        left_s, right_s = conv
-        try:
-            f = _parse_sympy(left_s)
-            g = _parse_sympy(right_s)
-        except Exception as e:
-            msg = str(e).replace("\\", "/")
-            return FourierResponse(
-                build_id=BUILD_ID,
-                ok=False,
-                input_latex="",
-                result_latex="",
-                steps_latex=[r"\text{Parser error: " + msg + r"}"],
-                error=str(e),
-                form="error",
-                conditions_latex="",
-                method="unknown",
-
-            )
-
-        # Convolution theorem (engineering)
-        # IMPORTANT: compute each factor using the SAME rule-first pipeline
-        # as the non-convolution path. Otherwise, sin/cos/pure-tones etc.
-        # fall back to the raw definition integral and SymPy may return 0.
-        F_form, okF, F, F_steps, _, _ = _derive_with_properties(f)
-        G_form, okG, G, G_steps, _, _ = _derive_with_properties(g)
-
-        steps = []
-        steps.append(r"x(t)=(f\star g)(t)=\int_{-\infty}^{\infty}f(\tau)g(t-\tau)\,d\tau")
-        steps.append(r"\Rightarrow\;X(\omega)=F(\omega)\,G(\omega)")
-        steps.append(r"\text{Compute }F(\omega)\text{ (rule-first):}")
-        steps.extend(F_steps)
-        steps.append(r"F(\omega)=" + latex(F))
-        steps.append(r"\text{Compute }G(\omega)\text{ (rule-first):}")
-        steps.extend(G_steps)
-        steps.append(r"G(\omega)=" + latex(G))
-        X = simplify(F * G) if (okF and okG) else (F * G)
-        steps.append(r"\Rightarrow\;X(\omega)=(" + latex(F) + r")(" + latex(G) + r")")
-
-        return FourierResponse(
-            build_id=BUILD_ID,
-            ok=True,
-            input_latex=latex(f) + r"\cdot " + latex(g),
-            result_latex=_format_result_display_latex(latex(X)),
-            steps_latex=steps,
-            error=None,
-            form="closed_form" if (okF and okG) else "integral_form",
-            conditions_latex="",
-            method="convolution_rule",
-
-        )
-
-    # Normal case
+        return _input_error('Empty input')
     try:
-        f = _parse_sympy(raw)
-    except Exception as e:
-        msg = str(e).replace("\\", "/")
-        return FourierResponse(
-            build_id=BUILD_ID,
-            ok=False,
-            input_latex="",
-            result_latex="",
-            steps_latex=[r"\text{Parser error: " + msg + r"}"],
-            error=str(e),
-            form="error",
-            conditions_latex="",
-        )
-
-    form, ok, X, steps, conditions, err = _derive_with_properties(f)
-    # --- method probe (no change to math logic) ---
-    method = "unknown"
-    if form == "distribution_form":
-        method = "distribution"
-    elif form == "convolution":
-        method = "convolution"
-    elif form == "closed_form":
-        method = "closed_form"
-    elif form == "fallback":
-        method = "fallback"
-
-    if steps:
-        s0 = steps[0]
-        if "Convolution" in s0 or "convolution" in s0:
-            method = "convolution_rule"
-        elif "Distribution rule" in s0 or "(Distribution)" in s0:
-            method = "distribution_rule"
-        elif "Direct integral" in s0 or "integral" in s0:
-            method = "direct_integral"
+        # Normalize brackets before finding a top-level convolution separator.
+        raw = raw.replace('（','(').replace('）',')')
+        conv = _split_convolution_top_level(raw)
+        f = _parse_sympy(conv[0] if conv else raw)
+        g = _parse_sympy(conv[1]) if conv else None
+    except Exception:
+        return _input_error('Parser error: check the supported functions, arithmetic and parentheses.')
+    token = _METHOD_PATH.set(set())
+    try:
+        if conv:
+            return _convolve(f,g)
+        result = _derive_with_properties(f)
+        paths = _METHOD_PATH.get()
+        if 'direct_integral' in paths: method = 'direct_integral'
+        elif 'property_rule' in paths: method = 'property_rule'
+        elif 'linearity' in paths: method = 'linearity'
+        elif sympify(result[2]).has(DiracDelta,PV) or result[0] == 'distribution_form': method = 'distribution_rule'
+        else: method = 'known_pair'
+        return _finalize_response(f,result,method)
+    except Exception:
+        return FourierResponse(build_id=BUILD_ID,ok=False,input_latex='',result_latex='',
+            steps_latex=[],conditions_latex='',form='error',method='computation_error',
+            error='The expression could not be evaluated under the supported assumptions.')
+    finally:
+        _METHOD_PATH.reset(token)
 
 
-    steps = _teaching_steps(f, X, steps)
-
-    legacy_ok = (form in {"closed_form", "distribution_form"})
-
-
-    return FourierResponse(
-        build_id=BUILD_ID,
-        ok=legacy_ok,
-        input_latex=latex(f),
-        result_latex=_format_result_display_latex(_format_pv_reciprocal_result_latex(f) or latex(X)),
-        steps_latex=steps,
-        error=err,
-        form=form,
-        conditions_latex=conditions,
-        method="unknown",
-
-    )
-
+def _input_error(message):
+    return FourierResponse(build_id=BUILD_ID,ok=False,input_latex='',result_latex='',
+        steps_latex=[r'\text{Please enter a supported mathematical expression.}'],
+        error=message,form='error',conditions_latex='',method='input_validation')
 
 
 # ===== Extra rules: modulated step, B-spline, damped oscillation =====
@@ -2532,7 +2691,7 @@ def _rule_modulated_step(f):
     c = simplify(step_shift)
     shifted_phase = simplify(w0*c + phi)
     base = pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
-    X = simplify(coeff * exp(I*shifted_phase) * exp(-I*omega*c) * base)
+    X = _simplify_spectrum(coeff * exp(I*shifted_phase) * exp(-I*omega*c) * base)
 
     if coeff == 1:
         coeff_latex = ""
@@ -2647,7 +2806,7 @@ def _rule_shifted_poly_times_step_distribution(f):
     if base is None:
         return None
     Y, degree_values = base
-    X = simplify(exp(-I*omega*c) * Y)
+    X = _simplify_spectrum(exp(-I*omega*c) * Y)
 
     steps = _step_start_definition(f)
     steps += [
@@ -2766,7 +2925,7 @@ def _rule_trig_times_step_distribution(f):
         return pi*DiracDelta(omega - w0) - I*PV(1/(omega - w0))
 
     if trig == "sin":
-        X = simplify((exp(I*shifted_phase)*_Ushift(aa) - exp(-I*shifted_phase)*_Ushift(-aa)) / (2*I))
+        X = _simplify_spectrum((exp(I*shifted_phase)*_Ushift(aa) - exp(-I*shifted_phase)*_Ushift(-aa)) / (2*I))
         steps = [
             r"\textbf{Method: Distribution rule (trig times step)}",
             _linear_phase_display("sin", aa, bb) + r"u(t)",
@@ -2776,7 +2935,7 @@ def _rule_trig_times_step_distribution(f):
             r"X(\omega)=" + latex(X),
             ]
     else:
-        X = simplify((exp(I*shifted_phase)*_Ushift(aa) + exp(-I*shifted_phase)*_Ushift(-aa)) / 2)
+        X = _simplify_spectrum((exp(I*shifted_phase)*_Ushift(aa) + exp(-I*shifted_phase)*_Ushift(-aa)) / 2)
         steps = [
             r"\textbf{Method: Distribution rule (trig times step)}",
             _linear_phase_display("cos", aa, bb) + r"u(t)",
@@ -2786,7 +2945,7 @@ def _rule_trig_times_step_distribution(f):
             r"X(\omega)=" + latex(X),
             ]
 
-    X = simplify(coeff * exp(-I*omega*cc) * X)
+    X = _simplify_spectrum(coeff * exp(-I*omega*cc) * X)
 
     trig_display = r"\sin" if trig == "sin" else r"\cos"
     euler_identity = (
@@ -2839,7 +2998,7 @@ def _rule_poly_distribution(f):
     else:
         return None
 
-    X = simplify(2*pi*(I**n)*Derivative(DiracDelta(omega), (omega, n)))
+    X = _simplify_spectrum(2*pi*(I**n)*Derivative(DiracDelta(omega), (omega, n)))
     steps = _step_start_definition(f)
     steps += [
         r"\textbf{Step 2: Identify the polynomial degree}",
@@ -2907,7 +3066,7 @@ def _rule_pv_reciprocal(f):
             return None
 
         shift = simplify(b / a)
-        X = simplify((-I*pi/a) * exp(I*omega*shift) * sign(omega))
+        X = _simplify_spectrum((-I*pi/a) * exp(I*omega*shift) * sign(omega))
 
         steps = [
             r"\textbf{Method: Distribution rule (principal value)}",
@@ -2966,3 +3125,23 @@ def _format_pv_reciprocal_result_latex(f):
         return r"-\frac{j\pi}{%s}\," % latex(a) + _phase_factor_latex(shift) + r"\,\mathrm{sign}(\omega)"
     except Exception:
         return None
+
+
+def _rule_affine_step(f):
+    pair = _extract_single_function_factor(f, Heaviside)
+    if pair is None or not _is_heaviside(pair[1]): return None
+    coeff, h = pair
+    lin = _as_linear_in_t(h.args[0])
+    if lin is None: return None
+    a, b = lin
+    conditions = _affine_real_conditions(a,b)
+    if conditions is None: return None
+    c = simplify(-b/a)
+    X = coeff*exp(-I*omega*c)*(pi*DiracDelta(omega)-I*sign(a)*PV(1/omega))
+    steps = [r'\textbf{Step 1: Identify the step edge and orientation}',
+             r'c='+latex(c)+r',\quad a='+latex(a)+r',\quad C='+latex(coeff),
+             r'\mathcal{F}\{u(a t)\}=\pi\delta(\omega)-j\,\mathrm{sign}(a)\,\mathrm{PV}\frac{1}{\omega}',
+             r'\textbf{Step 2: Apply time shift and linearity}',
+             r'\mathcal{F}\{C y(t-c)\}=C e^{-j\omega c}Y(\omega)'] + _step_final_result(X)
+    _record_method('known_pair')
+    return 'distribution_form',True,X,steps,conditions,None

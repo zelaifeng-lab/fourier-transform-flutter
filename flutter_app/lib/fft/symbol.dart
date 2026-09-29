@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -42,6 +41,10 @@ class SymbolicResult {
   final String inputLatex; // RHS only, displayed as x(t)=...
   final String resultLatex; // RHS only, displayed as X(ω)=...
   final List<String> stepsLatex;
+  final String conditionsLatex;
+  final String? error;
+  final String? form;
+  final String? method;
 
   // Optional for charts
   final List<double> omegaAxis;
@@ -54,7 +57,32 @@ class SymbolicResult {
     required this.stepsLatex,
     required this.omegaAxis,
     required this.spectrumData,
+    this.conditionsLatex = '',
+    this.error,
+    this.form,
+    this.method,
   });
+
+  factory SymbolicResult.fromJson(Map<String, dynamic> json) {
+    if (json['ok'] is! bool ||
+        (json['steps_latex'] != null && json['steps_latex'] is! List)) {
+      throw const FormatException('Invalid backend response');
+    }
+    return SymbolicResult._(
+      ok: json['ok'] == true,
+      inputLatex: (json['input_latex'] ?? '').toString(),
+      resultLatex: (json['result_latex'] ?? '').toString(),
+      stepsLatex: (json['steps_latex'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(),
+      conditionsLatex: (json['conditions_latex'] ?? '').toString(),
+      error: json['error']?.toString(),
+      form: json['form']?.toString(),
+      method: json['method']?.toString(),
+      omegaAxis: const [],
+      spectrumData: const [],
+    );
+  }
 
   factory SymbolicResult.ok({
     required String inputLatex,
@@ -76,11 +104,14 @@ class SymbolicResult {
   factory SymbolicResult.fail({
     required String inputLatex,
     String messageLatex = r'\text{Unable to compute}',
+    String error = 'Unable to compute.',
   }) {
     return SymbolicResult._(
       ok: false,
       inputLatex: inputLatex,
       resultLatex: messageLatex,
+      error: error,
+      form: 'error',
       stepsLatex: const [],
       omegaAxis: const [],
       spectrumData: const [],
@@ -88,63 +119,56 @@ class SymbolicResult {
   }
 }
 
-Future<SymbolicResult> computeByBackendOnly(String expression) async {
+Future<SymbolicResult> computeByBackendOnly(
+  String expression, {
+  http.Client? client,
+}) async {
   // Backend selection:
-  // - Web (GitHub Pages/Flutter Web): use your public Render URL (HTTPS)
-  // - Android emulator: use 10.0.2.2 to reach host machine
-  // - You can override for any build with:
-  //   flutter run/build ... --dart-define=API_BASE_URL=https://your-backend
+  // - Default builds (web/app): use the public Render URL.
+  // - Local development can override it with:
+  //   flutter run/build ... --dart-define=API_BASE_URL=http://10.0.2.2:8000
   const String envBase = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: '',
   );
   const String renderBase = 'https://fourier-transform-flutter.onrender.com';
-  const String androidEmulatorBase = 'http://10.0.2.2:8000';
-
-  final String base = envBase.isNotEmpty
-      ? envBase
-      : (kIsWeb ? renderBase : androidEmulatorBase);
+  final String base = envBase.isNotEmpty ? envBase : renderBase;
   final Uri uri = Uri.parse(
     base.endsWith('/') ? '${base}fourier' : '${base}/fourier',
   );
 
   try {
-    final res = await http.post(
+    final res = await (client?.post ?? http.post)(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'expression': expression}),
-    );
+    ).timeout(const Duration(seconds: 45));
 
     if (res.statusCode != 200) {
       return SymbolicResult.fail(
         inputLatex: r'\text{(backend error)}',
         messageLatex: r'\text{HTTP }' + res.statusCode.toString(),
+        error: 'Backend request failed (HTTP ${res.statusCode}).',
       );
     }
 
-    final j = jsonDecode(res.body) as Map<String, dynamic>;
-    final ok = (j['ok'] == true);
-
-    final inputLatex = (j['input_latex'] ?? r'\text{(parse failed)}')
-        .toString();
-    final resultLatex = (j['result_latex'] ?? r'\text{Unable to compute}')
-        .toString();
-    final steps = (j['steps_latex'] as List<dynamic>? ?? const [])
-        .map((e) => e.toString())
-        .toList();
-
-    return SymbolicResult._(
-      ok: ok,
-      inputLatex: inputLatex,
-      resultLatex: resultLatex,
-      stepsLatex: steps,
-      omegaAxis: const [],
-      spectrumData: const [],
+    final decoded = jsonDecode(res.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Expected an object');
+    }
+    final j = decoded;
+    return SymbolicResult.fromJson(j);
+  } on FormatException {
+    return SymbolicResult.fail(
+      inputLatex: '',
+      messageLatex: '',
+      error: 'The backend returned an invalid response. Please retry.',
     );
   } catch (_) {
     return SymbolicResult.fail(
       inputLatex: r'\text{(network error)}',
-      messageLatex: r'\text{Unable to reach backend}',
+      messageLatex: '',
+      error: 'Unable to reach the backend. Check the connection and retry.',
     );
   }
 }
@@ -153,7 +177,8 @@ Future<SymbolicResult> computeByBackendOnly(String expression) async {
 
 class SymbolPage extends StatefulWidget {
   final String expression;
-  const SymbolPage({super.key, required this.expression});
+  final Future<SymbolicResult> Function(String)? compute;
+  const SymbolPage({super.key, required this.expression, this.compute});
 
   @override
   State<SymbolPage> createState() => _SymbolPageState();
@@ -165,14 +190,14 @@ class _SymbolPageState extends State<SymbolPage> {
   @override
   void initState() {
     super.initState();
-    _future = computeByBackendOnly(widget.expression);
+    _future = (widget.compute ?? computeByBackendOnly)(widget.expression);
   }
 
   @override
   void didUpdateWidget(covariant SymbolPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.expression != widget.expression) {
-      _future = computeByBackendOnly(widget.expression);
+      _future = (widget.compute ?? computeByBackendOnly)(widget.expression);
     }
   }
 
@@ -230,13 +255,14 @@ class _SymbolPageState extends State<SymbolPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Semantics(
-                      label: 'symbolic-result:${res.resultLatex}',
-                      child: texLine(
-                        r'\displaystyle X(\omega)=' + res.resultLatex,
-                        style: theme.textTheme.titleLarge,
+                    if (res.resultLatex.isNotEmpty && res.form != 'error')
+                      Semantics(
+                        label: 'symbolic-result:${res.resultLatex}',
+                        child: texLine(
+                          r'\displaystyle X(\omega)=' + res.resultLatex,
+                          style: theme.textTheme.titleLarge,
+                        ),
                       ),
-                    ),
                     if (containsPrincipalValueNotation(
                       resultLatex: res.resultLatex,
                       stepsLatex: res.stepsLatex,
@@ -245,10 +271,7 @@ class _SymbolPageState extends State<SymbolPage> {
                       const PrincipalValueNotice(visible: true),
                     ],
                     const SizedBox(height: 8),
-                    if (!res.ok)
-                      statusLine(
-                        'Closed-form not found; showing integral / symbolic form.',
-                      ),
+                    ResultNotices(result: res),
                   ],
                 ),
               ),
@@ -2934,4 +2957,38 @@ class _Trig {
   }
 
   return null;
+}
+
+/// User-facing conditions and errors; computation metadata stays in the model.
+class ResultNotices extends StatelessWidget {
+  final SymbolicResult result;
+  const ResultNotices({super.key, required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (result.conditionsLatex.isNotEmpty) ...[
+          const Text('Conditions'),
+          ScrollableMathLine(
+            key: const Key('result-conditions'),
+            latex: result.conditionsLatex,
+          ),
+        ],
+        if (result.error?.isNotEmpty == true)
+          Text(result.error!, key: const Key('result-error')),
+        if (!result.ok && result.form == 'integral_form')
+          const Text(
+            'Integral representation only; a closed form has not been established.',
+          ),
+        if (!result.ok &&
+            result.error == null &&
+            result.form != 'integral_form')
+          const Text(
+            'The calculation was not completed. Please check the input.',
+          ),
+      ],
+    );
+  }
 }
